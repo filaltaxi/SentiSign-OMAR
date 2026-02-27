@@ -17,3 +17,8 @@ sounddevice
 scipy
 numpy
 opencv-python==4.8.1.78
+mediapipe==0.10.9
+torchvision==0.21.0
+onnx==1.14.1
+protobuf==3.20.3
+scikit-learn

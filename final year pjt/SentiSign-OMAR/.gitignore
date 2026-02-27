@@ -1,10 +1,22 @@
+# Virtual environment
+.venv/
+
+# Large model files (too big for GitHub)
+models/asl/asl_cnn_transformer.pth
+models/landmark/landmark_mlp.pth
+models/landmark/landmark_rf.pkl
+
+# Collected landmark data (machine-specific)
+data/landmarks/raw/
+data/landmarks/processed/
+
+# Generated audio files
+*.wav
+
+# Python cache
 __pycache__/
 *.pyc
-.venv/
-models/
-slm/models/
-*.wav
-*.log
-*.bak*
-.tmp_*
-.vscode/
+*.pyo
+
+# Kaggle notebooks output
+.ipynb_checkpoints/

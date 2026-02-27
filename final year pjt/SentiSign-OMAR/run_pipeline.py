@@ -28,6 +28,7 @@ if ".venv" not in sys.executable and "venv" not in sys.executable:
 _ROOT    = os.path.dirname(os.path.abspath(__file__))
 _SRC     = os.path.join(_ROOT, "src")
 _SLM_SRC = os.path.join(_ROOT, "slm", "src")
+OUTPUT_DIR = _ROOT
 
 for p in [_SRC, _SLM_SRC]:
     if p not in sys.path:
@@ -36,17 +37,10 @@ for p in [_SRC, _SLM_SRC]:
 from emotion_map       import list_emotions, print_emotion_table
 from generate_sentence import words_to_sentence
 from tts               import speak, speak_and_save
-from emotion_detector  import capture_emotion
+from sign_recognizer   import capture_words_and_emotion
 
 
 # ── Input parsing ─────────────────────────────────────────────────────────────
-
-def parse_words(raw: str) -> list:
-    sep   = "," if "," in raw else " "
-    words = [w.strip() for w in raw.split(sep) if w.strip()]
-    if not words:
-        raise ValueError("No words found. Enter at least one word.")
-    return words
 
 
 def get_inputs() -> tuple:
@@ -59,31 +53,10 @@ def get_inputs() -> tuple:
     print_emotion_table()
 
     # ── Step 1: Words (still manual — Phase 3 will automate) ─────────────────
-    print("\n  Enter sign language words (comma or space separated):")
-    print("  Examples:")
-    print("    I, TOMORROW, HOSPITAL, GO")
-    print("    HUNGRY I FOOD WANT")
-    print("    MOTHER SICK DOCTOR NEED")
-
-    while True:
-        raw = input("\n  Words > ").strip()
-        if not raw:
-            print("  ⚠  Please enter at least one word.")
-            continue
-        try:
-            words = parse_words(raw)
-            print(f"  ✓  {len(words)} word(s): {words}")
-            break
-        except ValueError as e:
-            print(f"  ⚠  {e}")
-
-    # ── Step 2: Emotion from webcam ───────────────────────────────────────────
-    print("\n  Next: webcam will open for emotion detection.")
-    print("  Express your emotion, then press ENTER in this terminal when done.")
+    print("\n  Next: webcam opens ? sign your words AND show your emotion together.")
+    print("  GREEN box = hand recognition   BLUE box = face emotion")
     input("  Press ENTER here to open the webcam > ")
-
-    emotion = capture_emotion()
-
+    words, emotion = capture_words_and_emotion()
     return words, emotion
 
 
@@ -102,15 +75,13 @@ def run():
     print("\n" + "─" * 64)
     print(f"  [2/2]  Synthesising speech  (emotion: {emotion}) ...")
 
-    save_q = input("\n  Save audio as .wav? (y/n, default n) > ").strip().lower()
-    if save_q == "y":
-        default = f"sentisign_{emotion}.wav"
-        fname   = input(f"  Filename (default: {default}) > ").strip()
-        path    = fname if fname else default
-        speak_and_save(sentence, emotion=emotion, path=path, also_play=True)
-        print(f"\n  ✓  Saved: {path}")
-    else:
-        speak(sentence, emotion=emotion, play=True)
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    fname = f"sentisign_{emotion}_{timestamp}.wav"
+    path  = os.path.join(OUTPUT_DIR, fname)
+    print(f"\n  Auto-saving audio as: {fname}")
+    speak_and_save(sentence, emotion=emotion, path=path, also_play=True)
+    print(f"\n  ✓  Saved: {path}")
 
     # Summary
     print("\n" + "═" * 64)
