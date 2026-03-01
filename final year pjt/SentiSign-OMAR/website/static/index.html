@@ -593,10 +593,20 @@ async function onHandResults(results) {
   }
 
   for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-    const lm    = results.multiHandLandmarks[i];
-    const hand  = results.multiHandedness?.[i];
-    const label = hand?.classification?.[0]?.label ?? 'Right';
-    const color = label === 'Right' ? '#00d4aa' : '#ff9a3c';
+    const lm = results.multiHandLandmarks[i];
+    // Use position-based R/L — handedness unreliable with two hands
+    let isPhysicalRight;
+    if (results.multiHandLandmarks.length >= 2) {
+      const w0 = results.multiHandLandmarks[0][0].x;
+      const w1 = results.multiHandLandmarks[1][0].x;
+      // Larger x = physical right hand in raw MediaPipe coordinates
+      isPhysicalRight = i === (w0 > w1 ? 0 : 1);
+      // Note: color and label only — buildFeatures handles actual slot assignment
+    } else {
+      const label = results.multiHandedness?.[i]?.classification?.[0]?.label ?? 'Left';
+      isPhysicalRight = label === 'Left';
+    }
+    const color = isPhysicalRight ? '#00d4aa' : '#ff9a3c';
     const xs = lm.map(p => p.x * canvas.width);
     const ys = lm.map(p => p.y * canvas.height);
     const x1 = Math.max(0, Math.min(...xs) - 20);
@@ -606,7 +616,8 @@ async function onHandResults(results) {
     ctx.strokeStyle = color; ctx.lineWidth = 2;
     ctx.strokeRect(x1, y1, x2-x1, y2-y1);
     ctx.fillStyle = color; ctx.font = '13px DM Sans';
-    ctx.fillText(label === 'Right' ? 'R' : 'L', x1+4, y1-4);
+    // Canvas is CSS-mirrored so flip the displayed label
+    ctx.fillText(isPhysicalRight ? 'L' : 'R', x1+4, y1-4);
   }
 
   // ?? Build features ?????????????????????????????????????????????
@@ -672,13 +683,22 @@ function buildFeatures(results) {
   const right = new Array(63).fill(0);
   const left  = new Array(63).fill(0);
   if (!results.multiHandLandmarks) return null;
-  for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-    const lm    = results.multiHandLandmarks[i];
-    const label = results.multiHandedness?.[i]?.classification?.[0]?.label ?? 'Left';
-    const flat  = lm.flatMap(p => [p.x, p.y, p.z]);
-    // Both Python and JS label physical right hand as 'Left' — direct mapping
+
+  if (results.multiHandLandmarks.length === 1) {
+    // Single hand — handedness reliable
+    const label = results.multiHandedness?.[0]?.classification?.[0]?.label ?? 'Left';
+    const flat  = results.multiHandLandmarks[0].flatMap(p => [p.x, p.y, p.z]);
+    // Physical right hand = MediaPipe 'Right' (unmirrored input)
     if (label === 'Right') flat.forEach((v,j) => right[j] = v);
     else                   flat.forEach((v,j) => left[j]  = v);
+  } else {
+    // Two hands — use wrist x position (smaller x = user's RIGHT hand)
+    const w0 = results.multiHandLandmarks[0][0].x;
+    const w1 = results.multiHandLandmarks[1][0].x;
+    const rIdx = w0 > w1 ? 0 : 1;
+    const lIdx = w0 > w1 ? 1 : 0;
+    results.multiHandLandmarks[rIdx].flatMap(p => [p.x, p.y, p.z]).forEach((v,j) => right[j] = v);
+    results.multiHandLandmarks[lIdx].flatMap(p => [p.x, p.y, p.z]).forEach((v,j) => left[j]  = v);
   }
   return [...right, ...left];
 }

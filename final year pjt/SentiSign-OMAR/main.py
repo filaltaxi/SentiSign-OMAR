@@ -454,13 +454,25 @@ async def add_sign(req: SignAddRequest, background_tasks: BackgroundTasks):
         [f'r_lm{i}_{ax}' for i in range(21) for ax in ['x','y','z']] +
         [f'l_lm{i}_{ax}' for i in range(21) for ax in ['x','y','z']]
     )
+    def norm_hand(pts_flat):
+        pts = np.array(pts_flat, dtype=np.float32).reshape(21, 3)
+        pts = pts - pts[0]
+        scale = np.max(np.abs(pts))
+        if scale > 0:
+            pts = pts / scale
+        return pts.flatten().tolist()
+
     is_new = not os.path.exists(csv_path)
     with open(csv_path, 'a', newline='') as f:
         writer = csv.writer(f)
         if is_new:
             writer.writerow(feat_cols + ['label'])
         for sample in samples:
-            writer.writerow(list(sample) + [cls_key])
+            raw = np.array(sample, dtype=np.float32)
+            # Normalise each hand to match collect_landmarks.py
+            right_norm = norm_hand(raw[:63])
+            left_norm  = norm_hand(raw[63:]) if not np.allclose(raw[63:], 0) else [0.0]*63
+            writer.writerow(right_norm + left_norm + [cls_key])
 
     # Update vocab in memory
     CLASS_TO_WORD[cls_key] = word
@@ -613,8 +625,9 @@ def _background_retrain(cls_key: str, word: str):
         # ── Reload into memory ─────────────────────────────────────
         model.eval()
         _mlp_model    = model
-        _idx_to_label = {int(k): v for k, v in idx_to_label.items()}
+        _idx_to_label = {i: c for i, c in enumerate(classes)}
         _label_map    = new_label_map
+        print(f'[Retrain] idx_to_label updated: {_idx_to_label}')
 
         # Update CLASS_TO_WORD for any new custom classes
         for cls in classes:

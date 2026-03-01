@@ -390,9 +390,31 @@ async function onGate2Results(results, canvas, video) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if (results.multiHandLandmarks?.length) {
-    for (const lm of results.multiHandLandmarks) {
-      drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:'#00d4aa55',lineWidth:2});
-      drawLandmarks(ctx,lm,{color:'#00d4aa',lineWidth:1,radius:3});
+    for (let i=0; i<results.multiHandLandmarks.length; i++) {
+      const lm = results.multiHandLandmarks[i];
+      let isPhysicalRight;
+      if (results.multiHandLandmarks.length >= 2) {
+        const w0 = results.multiHandLandmarks[0][0].x;
+        const w1 = results.multiHandLandmarks[1][0].x;
+        isPhysicalRight = i === (w0 > w1 ? 0 : 1);
+      } else {
+        const label = results.multiHandedness?.[i]?.classification?.[0]?.label ?? 'Left';
+        isPhysicalRight = label === 'Right';
+      }
+      const color = isPhysicalRight ? '#00d4aa' : '#ff9a3c';
+      const boxLabel = isPhysicalRight ? 'R' : 'L';
+      drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:color+'55',lineWidth:2});
+      drawLandmarks(ctx,lm,{color:color,lineWidth:1,radius:3});
+      const xs = lm.map(p => p.x * canvas.width);
+      const ys = lm.map(p => p.y * canvas.height);
+      const x1 = Math.max(0, Math.min(...xs) - 20);
+      const y1 = Math.max(0, Math.min(...ys) - 20);
+      const x2 = Math.min(canvas.width,  Math.max(...xs) + 20);
+      const y2 = Math.min(canvas.height, Math.max(...ys) + 20);
+      ctx.strokeStyle = color; ctx.lineWidth = 2;
+      ctx.strokeRect(x1, y1, x2-x1, y2-y1);
+      ctx.fillStyle = color; ctx.font = '13px sans-serif';
+      ctx.fillText(boxLabel, x1+4, y1-4);
     }
   }
   if (gate2Done) return;
@@ -493,13 +515,33 @@ function onRecordResults(results, canvas, video) {
     return;
   }
 
-  // Draw each hand with separate colour
   for (let i=0; i<results.multiHandLandmarks.length; i++) {
     const lm    = results.multiHandLandmarks[i];
-    const label = results.multiHandedness?.[i]?.classification?.[0]?.label ?? 'Left';
-    const color = label === 'Right' ? '#00d4aa' : '#ff9a3c';
+    // Use position for R/L when two hands present — handedness unreliable
+    let isPhysicalRight;
+    if (results.multiHandLandmarks.length >= 2) {
+      const w0 = results.multiHandLandmarks[0][0].x;
+      const w1 = results.multiHandLandmarks[1][0].x;
+      isPhysicalRight = i === (w0 > w1 ? 0 : 1);
+    } else {
+      const label = results.multiHandedness?.[i]?.classification?.[0]?.label ?? 'Left';
+      isPhysicalRight = label === 'Right';
+    }
+    const color = isPhysicalRight ? '#00d4aa' : '#ff9a3c';
+    const boxLabel = isPhysicalRight ? 'R' : 'L';
     drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:color+'55',lineWidth:2});
     drawLandmarks(ctx,lm,{color:color,lineWidth:1,radius:3});
+    // Draw bounding box with correct R/L label
+    const xs = lm.map(p => p.x * canvas.width);
+    const ys = lm.map(p => p.y * canvas.height);
+    const x1 = Math.max(0, Math.min(...xs) - 20);
+    const y1 = Math.max(0, Math.min(...ys) - 20);
+    const x2 = Math.min(canvas.width,  Math.max(...xs) + 20);
+    const y2 = Math.min(canvas.height, Math.max(...ys) + 20);
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.strokeRect(x1, y1, x2-x1, y2-y1);
+    ctx.fillStyle = color; ctx.font = '13px sans-serif';
+    ctx.fillText(boxLabel, x1+4, y1-4);
   }
 
   const features = buildFeatures(results);
@@ -518,13 +560,42 @@ function onRecordResults(results, canvas, video) {
     tmpC.width  = video.videoWidth;
     tmpC.height = video.videoHeight;
     const tmpCtx = tmpC.getContext('2d');
-    // Mirror to match natural view
+    // Mirror to match display
     tmpCtx.translate(tmpC.width, 0);
     tmpCtx.scale(-1, 1);
     tmpCtx.drawImage(video, 0, 0);
+    tmpCtx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+    // Draw landmarks on top of mirrored frame
+    for (let hi = 0; hi < results.multiHandLandmarks.length; hi++) {
+      const hLm = results.multiHandLandmarks[hi];
+      // Draw connections
+      const connections = HAND_CONNECTIONS;
+      tmpCtx.strokeStyle = '#00d4aa88';
+      tmpCtx.lineWidth = 2;
+      for (const [a, b] of connections) {
+        // Mirror x for landmark drawing
+        const ax = tmpC.width - hLm[a].x * tmpC.width;
+        const ay = hLm[a].y * tmpC.height;
+        const bx = tmpC.width - hLm[b].x * tmpC.width;
+        const by = hLm[b].y * tmpC.height;
+        tmpCtx.beginPath();
+        tmpCtx.moveTo(ax, ay);
+        tmpCtx.lineTo(bx, by);
+        tmpCtx.stroke();
+      }
+      // Draw landmark dots
+      tmpCtx.fillStyle = '#00d4aa';
+      for (const lmPt of hLm) {
+        const px = tmpC.width - lmPt.x * tmpC.width;
+        const py = lmPt.y * tmpC.height;
+        tmpCtx.beginPath();
+        tmpCtx.arc(px, py, 3, 0, Math.PI * 2);
+        tmpCtx.fill();
+      }
+    }
     // Crop to hand bounding box
-    const allLm = results.multiHandLandmarks.flat();
-    const xs = allLm.map(p => p.x * tmpC.width);
+    const allLm = results.multiHandLandmarks.reduce((acc, hand) => acc.concat(hand), []);
+    const xs = allLm.map(p => (tmpC.width - p.x * tmpC.width));
     const ys = allLm.map(p => p.y * tmpC.height);
     const pad = 40;
     const x1 = Math.max(0, Math.min(...xs) - pad);
@@ -599,13 +670,22 @@ function buildFeatures(results) {
   const right = new Array(63).fill(0);
   const left  = new Array(63).fill(0);
   if (!results.multiHandLandmarks) return null;
-  for (let i=0; i<results.multiHandLandmarks.length; i++) {
-    const lm    = results.multiHandLandmarks[i];
-    const label = results.multiHandedness?.[i]?.classification?.[0]?.label ?? 'Left';
-    const flat  = lm.flatMap(p=>[p.x,p.y,p.z]);
-    // Physical right hand labelled 'Left' by both Python and JS — direct mapping
+
+  if (results.multiHandLandmarks.length === 1) {
+    // Single hand — handedness reliable
+    const label = results.multiHandedness?.[0]?.classification?.[0]?.label ?? 'Left';
+    const flat  = results.multiHandLandmarks[0].flatMap(p => [p.x, p.y, p.z]);
+    // Physical right hand = MediaPipe 'Right' (unmirrored input)
     if (label === 'Right') flat.forEach((v,j) => right[j] = v);
     else                   flat.forEach((v,j) => left[j]  = v);
+  } else {
+    // Two hands — use wrist x position (smaller x = user's RIGHT hand)
+    const w0 = results.multiHandLandmarks[0][0].x;
+    const w1 = results.multiHandLandmarks[1][0].x;
+    const rIdx = w0 > w1 ? 0 : 1;
+    const lIdx = w0 > w1 ? 1 : 0;
+    results.multiHandLandmarks[rIdx].flatMap(p => [p.x, p.y, p.z]).forEach((v,j) => right[j] = v);
+    results.multiHandLandmarks[lIdx].flatMap(p => [p.x, p.y, p.z]).forEach((v,j) => left[j]  = v);
   }
   return [...right, ...left];
 }
