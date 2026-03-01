@@ -74,6 +74,7 @@ _HAAR_PATH     = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
 # ── Cached globals ────────────────────────────────────────────────────────────
 _mlp_model    = None
 _idx_to_label = None
+_mlp_input_dim = None
 _emo_model    = None
 _face_cascade = None
 _device       = None
@@ -136,7 +137,7 @@ def _get_device():
 
 
 def _load_mlp():
-    global _mlp_model, _idx_to_label
+    global _mlp_model, _idx_to_label, _mlp_input_dim
     if _mlp_model is not None:
         return _mlp_model, _idx_to_label
 
@@ -159,15 +160,17 @@ def _load_mlp():
     num_classes   = len(_idx_to_label)
 
     ckpt   = torch.load(_MLP_PATH, map_location=device)
+    input_dim = int(ckpt.get('input_dim', 63))
     hidden = ckpt.get('hidden',  [256, 128, 64])
     drop   = ckpt.get('dropout', 0.3)
 
-    model  = LandmarkMLP(input_dim=63, hidden=hidden,
+    model  = LandmarkMLP(input_dim=input_dim, hidden=hidden,
                           num_classes=num_classes, dropout=drop)
     model.load_state_dict(ckpt['model_state'])
     model.eval().to(device)
 
     _mlp_model = model
+    _mlp_input_dim = input_dim
     print(f'[sign_recognizer] Landmark MLP loaded. Classes: {num_classes}')
     return _mlp_model, _idx_to_label
 
@@ -190,10 +193,9 @@ def _load_emotion_model():
 # ── Inference helpers ─────────────────────────────────────────────────────────
 
 def _classify_landmarks(model, idx_to_label, landmarks, device):
-    """Run MLP on normalised landmarks. Returns (class_name, confidence)."""
+    """Run MLP on extracted feature vector. Returns (class_name, confidence)."""
     try:
-        features = _normalize_landmarks(landmarks)
-        tensor   = torch.from_numpy(features).unsqueeze(0).to(device)
+        tensor = torch.from_numpy(landmarks).unsqueeze(0).to(device)
         with torch.no_grad():
             probs = torch.softmax(model(tensor), dim=1).cpu().numpy()[0]
         idx        = int(np.argmax(probs))
@@ -201,6 +203,60 @@ def _classify_landmarks(model, idx_to_label, landmarks, device):
         return idx_to_label.get(idx, ''), confidence
     except Exception:
         return '', 0.0
+
+
+def _extract_landmark_features(results, expected_dim: int):
+    """
+    Extract a flat feature vector from MediaPipe results.
+
+    Supports:
+      - 63 dims:  one hand (21 landmarks × xyz)
+      - 126 dims: two hands concatenated (Left + Right), zero-padded if missing
+    """
+    if not results or not getattr(results, 'multi_hand_landmarks', None):
+        return None
+
+    hands = results.multi_hand_landmarks
+    if expected_dim <= 63:
+        return _normalize_landmarks(hands[0].landmark)
+
+    # Build Left/Right feature vectors (63 each). Default to zeros if missing.
+    zeros = np.zeros(63, dtype=np.float32)
+    left = None
+    right = None
+
+    handedness = getattr(results, 'multi_handedness', None)
+    if handedness and len(handedness) == len(hands):
+        for hand_lm, hand_info in zip(hands, handedness):
+            try:
+                label = hand_info.classification[0].label  # "Left" / "Right"
+            except Exception:
+                label = None
+            feats = _normalize_landmarks(hand_lm.landmark)
+            if label == 'Left' and left is None:
+                left = feats
+            elif label == 'Right' and right is None:
+                right = feats
+            else:
+                if left is None:
+                    left = feats
+                elif right is None:
+                    right = feats
+    else:
+        # No handedness info; use detection order.
+        if len(hands) >= 1:
+            left = _normalize_landmarks(hands[0].landmark)
+        if len(hands) >= 2:
+            right = _normalize_landmarks(hands[1].landmark)
+
+    base = np.concatenate([left if left is not None else zeros,
+                           right if right is not None else zeros])
+    if expected_dim == 126:
+        return base
+    if expected_dim < 126:
+        return base[:expected_dim]
+    pad = np.zeros(expected_dim - 126, dtype=np.float32)
+    return np.concatenate([base, pad])
 
 
 def _classify_emotion(emo_model, face_cascade, frame, device):
@@ -252,8 +308,8 @@ def capture_words_and_emotion() -> tuple:
     idx_to_label = None
     try:
         mlp_model, idx_to_label = _load_mlp()
-    except FileNotFoundError as e:
-        print(f'  {e}')
+    except Exception as e:
+        print(f'  [sign_recognizer] Landmark model disabled: {e}')
         print('  Continuing with emotion-only webcam session; words will be manual.')
 
     emo_model, face_cascade = _load_emotion_model()
@@ -264,11 +320,16 @@ def capture_words_and_emotion() -> tuple:
     _drawing = None
     if mlp_model is not None:
         try:
+            expected_dim = int(mlp_model.net[0].in_features)
+        except Exception:
+            expected_dim = 63
+        try:
             import mediapipe as mp
             _hands_module = mp.solutions.hands
             _drawing      = mp.solutions.drawing_utils
             hands = _hands_module.Hands(
-                static_image_mode=False, max_num_hands=1,
+                static_image_mode=False,
+                max_num_hands=2 if expected_dim > 63 else 1,
                 min_detection_confidence=0.7, min_tracking_confidence=0.6,
             )
         except ImportError:
@@ -316,12 +377,14 @@ def capture_words_and_emotion() -> tuple:
                 results   = hands.process(frame_rgb)
 
                 if results.multi_hand_landmarks:
-                    hand_lm = results.multi_hand_landmarks[0]
-                    _drawing.draw_landmarks(
-                        frame, hand_lm, _hands_module.HAND_CONNECTIONS)
+                    for hand_lm in results.multi_hand_landmarks:
+                        _drawing.draw_landmarks(
+                            frame, hand_lm, _hands_module.HAND_CONNECTIONS)
 
-                    cls_name, confidence = _classify_landmarks(
-                        mlp_model, idx_to_label, hand_lm.landmark, device)
+                    feats = _extract_landmark_features(results, expected_dim)
+                    if feats is not None:
+                        cls_name, confidence = _classify_landmarks(
+                            mlp_model, idx_to_label, feats, device)
 
                     # Hold logic
                     if cls_name == current_cls and confidence >= MIN_CONFIDENCE:
