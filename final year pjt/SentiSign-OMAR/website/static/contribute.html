@@ -169,12 +169,18 @@ h1 em{color:var(--teal);font-style:normal;}
         <video id="gate2Video" autoplay muted playsinline></video>
         <canvas id="gate2Canvas"></canvas>
         <div class="cam-overlay" id="gate2CamText">Hold your sign steady for the check</div>
+        <div style="position:absolute;bottom:0;left:0;right:0;height:5px;background:#1e2d3d;">
+          <div id="gate2ProgressFill" style="height:100%;width:0%;background:#00d4aa;transition:width 0.1s;"></div>
+        </div>
       </div>
 
       <div id="gate2Result" style="margin-bottom:16px;"></div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-secondary" onclick="backToGate1()">← Back</button>
+        <button class="btn btn-secondary" id="gate2RetryBtn" onclick="retryGate2()" style="display:none;">
+          ↺ Try Different Gesture
+        </button>
         <button class="btn btn-primary" id="gate2ContinueBtn" onclick="proceedToRecord()" style="display:none;">
           Continue to Recording →
         </button>
@@ -240,6 +246,8 @@ h1 em{color:var(--teal);font-style:normal;}
 <script>
 let targetWord    = '';
 let samples       = [];
+let gifFrames     = [];
+const GIF_MAX_FRAMES = 60;  // ~2 seconds at 30fps
 let recordCamera  = null;
 let recordHands   = null;
 let gate2Camera   = null;
@@ -282,8 +290,9 @@ async function checkWord() {
           <div class="ref-info">
             <h3>${word}</h3>
             <p>This word is already mapped to a sign in SentiSign.<br>
-               If you believe a different gesture should be used, you can
-               submit an alternative and it will be reviewed.</p>
+               You can add more training samples to improve recognition accuracy.</p>
+              <button class="btn btn-secondary" style="margin-top:10px;font-size:0.82rem;padding:8px 14px;"
+                onclick="addSamplesTo('${word}')">+ Add More Samples</button>
           </div>
         </div>
       `;
@@ -307,11 +316,20 @@ async function checkWord() {
   }
 }
 
+function addSamplesTo(word) {
+  targetWord = word;
+  // Skip both gates — go straight to recording
+  document.getElementById('gate1Result').innerHTML = '';
+  proceedToRecord();
+  setStep(3);
+}
+
 // ── GATE 2 ────────────────────────────────────────────────────────────────────
 async function goToGate2() {
   setStep(2);
   document.getElementById('gate2Word').textContent = targetWord;
   gate2Done = false;
+  window.gate2StableCount = 0;
   document.getElementById('gate2ContinueBtn').style.display = 'none';
   document.getElementById('gate2OverrideBtn').style.display = 'none';
   document.getElementById('gate2Result').innerHTML = '';
@@ -344,6 +362,27 @@ async function goToGate2() {
   await gate2Camera.start();
 }
 
+async function retryGate2() {
+  // Stop existing camera and hands before restarting
+  stopCamera(gate2Camera, gate2Hands, document.getElementById('gate2Video'));
+  gate2Camera = null;
+  gate2Hands  = null;
+  gate2Done   = false;
+  window.gate2StableCount = 0;
+
+  // Reset UI
+  document.getElementById('gate2RetryBtn').style.display    = 'none';
+  document.getElementById('gate2ContinueBtn').style.display = 'none';
+  document.getElementById('gate2OverrideBtn').style.display = 'none';
+  document.getElementById('gate2Result').innerHTML          = '';
+  document.getElementById('gate2ProgressFill').style.width  = '0%';
+  document.getElementById('gate2CamText').textContent       = 'Hold your sign steady for the check';
+
+  // Small delay to let camera fully release before reopening
+  await new Promise(r => setTimeout(r, 400));
+  await goToGate2();
+}
+
 async function onGate2Results(results, canvas, video) {
   // Always draw landmarks even after capture
   canvas.width  = video.videoWidth  || 640;
@@ -361,7 +400,18 @@ async function onGate2Results(results, canvas, video) {
   const features = buildFeatures(results);
   if (!features) return;
 
-  gate2Done = true; // only check once
+  // Only capture after hand has been stable for 15 frames
+  if (!window.gate2StableCount) window.gate2StableCount = 0;
+  window.gate2StableCount++;
+  const pct = Math.round((Math.min(window.gate2StableCount, 15) / 15) * 100);
+  document.getElementById('gate2CamText').innerHTML =
+    `Hold your sign steady &nbsp;<strong style="color:#00d4aa;font-size:1.1rem;">${Math.min(window.gate2StableCount, 15)}/15</strong>`;
+  document.getElementById('gate2ProgressFill').style.width = pct + '%';
+
+  if (window.gate2StableCount < 15) return;
+
+  gate2Done = true;
+  window.gate2StableCount = 0;
   stopCamera(gate2Camera, gate2Hands, video);
   gate2Camera = null; gate2Hands = null;
 
@@ -384,6 +434,7 @@ async function onGate2Results(results, canvas, video) {
                Try a different gesture, or override if you believe this is intentionally different.</div>
         </div>`;
       document.getElementById('gate2OverrideBtn').style.display = 'inline-block';
+      document.getElementById('gate2RetryBtn').style.display    = 'inline-block';
     } else {
       div.innerHTML = `
         <div class="alert alert-success">
@@ -402,7 +453,8 @@ async function onGate2Results(results, canvas, video) {
 // ── GATE 3: Recording ─────────────────────────────────────────────────────────
 async function proceedToRecord() {
   setStep(3);
-  samples = [];
+  samples   = [];
+  gifFrames = [];
   document.getElementById('recordWord').textContent     = targetWord;
   document.getElementById('recordWordDesc').textContent = targetWord;
   updateProgress(0);
@@ -460,6 +512,35 @@ function onRecordResults(results, canvas, video) {
     updateProgress(samples.length);
   }
 
+  // Capture reference frames for GIF (first GIF_MAX_FRAMES frames with hand)
+  if (gifFrames.length < GIF_MAX_FRAMES) {
+    const tmpC = document.createElement('canvas');
+    tmpC.width  = video.videoWidth;
+    tmpC.height = video.videoHeight;
+    const tmpCtx = tmpC.getContext('2d');
+    // Mirror to match natural view
+    tmpCtx.translate(tmpC.width, 0);
+    tmpCtx.scale(-1, 1);
+    tmpCtx.drawImage(video, 0, 0);
+    // Crop to hand bounding box
+    const allLm = results.multiHandLandmarks.flat();
+    const xs = allLm.map(p => p.x * tmpC.width);
+    const ys = allLm.map(p => p.y * tmpC.height);
+    const pad = 40;
+    const x1 = Math.max(0, Math.min(...xs) - pad);
+    const y1 = Math.max(0, Math.min(...ys) - pad);
+    const x2 = Math.min(tmpC.width,  Math.max(...xs) + pad);
+    const y2 = Math.min(tmpC.height, Math.max(...ys) + pad);
+    const cropW = x2 - x1;
+    const cropH = y2 - y1;
+    if (cropW > 20 && cropH > 20) {
+      const cropC = document.createElement('canvas');
+      cropC.width  = 200;
+      cropC.height = 200;
+      cropC.getContext('2d').drawImage(tmpC, x1, y1, cropW, cropH, 0, 0, 200, 200);
+      gifFrames.push(cropC.toDataURL('image/jpeg', 0.6).split(',')[1]);
+    }
+  }
   const pct = Math.round(samples.length / TARGET * 100);
   document.getElementById('recordCamText').textContent =
     samples.length < FLOOR
@@ -490,14 +571,21 @@ async function submitSign() {
   try {
     const res  = await fetch('/api/signs/add', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({word: targetWord, samples})
+      body: JSON.stringify({word: targetWord, samples, gif_frames: gifFrames})
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.message || 'Server error');
 
+    // Start banner polling immediately before navigating away
+    if (data.retraining) {
+      localStorage.setItem('sentisign_retraining', '1');
+    }
     setStep(4);
+    const retrainNote = data.retraining
+      ? '<br><span style="color:#5a7a8a;font-size:0.85rem;">The model is retraining in the background (2–3 minutes). The new sign will be fully recognised once complete.</span>'
+      : '';
     document.getElementById('successMsg').innerHTML =
-      `<strong>${targetWord}</strong> has been added with ${samples.length} samples. ${data.message}`;
+      `<strong>${targetWord}</strong> has been added with ${samples.length} samples.${retrainNote}`;
 
   } catch(e) {
     btn.disabled = false;

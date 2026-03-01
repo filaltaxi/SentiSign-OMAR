@@ -81,6 +81,14 @@ _retrain_status  = {'state': 'idle', 'message': ''}
 _retrain_lock    = threading.Lock()
 _models_ready    = False
 
+# Retrain config
+RETRAIN_HIDDEN   = [512, 256, 128]
+RETRAIN_DROPOUT  = 0.3
+RETRAIN_LR       = 1e-3
+RETRAIN_EPOCHS   = 80
+RETRAIN_BATCH    = 64
+RETRAIN_PATIENCE = 15
+
 
 # ── MLP Architecture ──────────────────────────────────────────────────────────
 class LandmarkMLP(nn.Module):
@@ -147,6 +155,7 @@ async def startup():
     load_mlp()
     load_emotion()
     _preload_slm_and_tts()
+    _restore_custom_signs()
     _models_ready = True
     print('[API] All models ready.')
 
@@ -169,6 +178,25 @@ def _preload_slm_and_tts():
         print('[API] TTS model ready.')
     except Exception as e:
         print(f'[API] TTS preload failed: {e}')
+
+def _restore_custom_signs():
+    """Reload any custom signs from label_map.json into CLASS_TO_WORD on startup."""
+    try:
+        if not os.path.exists(LABEL_PATH):
+            return
+        with open(LABEL_PATH) as f:
+            lm = json.load(f)
+        restored = 0
+        for cls in lm.get('classes', []):
+            if cls not in CLASS_TO_WORD:
+                # Custom sign — derive word from class key
+                word = cls.replace('CUSTOM_', '').replace('_', ' ')
+                CLASS_TO_WORD[cls] = word
+                restored += 1
+        if restored:
+            print(f'[API] Restored {restored} custom sign(s) from label_map.json')
+    except Exception as e:
+        print(f'[API] Failed to restore custom signs: {e}')
 
 
 # ── Normalisation ─────────────────────────────────────────────────────────────
@@ -199,6 +227,7 @@ class SignAddRequest(BaseModel):
     word: str
     sign_class: Optional[str] = None   # custom class key, auto-generated if None
     samples: List[List[float]]         # list of 126-feature vectors
+    gif_frames: Optional[List[str]] = None   # base64 JPEG frames
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -402,18 +431,25 @@ async def gate2_check(req: LandmarkRequest):
 
 @app.post('/api/signs/add')
 async def add_sign(req: SignAddRequest, background_tasks: BackgroundTasks):
-    """Add new sign samples and trigger KNN registration (instant)."""
-    word     = req.word.strip().upper()
-    samples  = req.samples
+    """Add new sign samples and trigger full MLP retrain in background."""
+    global _retrain_status
+
+    word    = req.word.strip().upper()
+    samples = req.samples
     if len(samples) < 100:
         raise HTTPException(400, f'Need at least 100 samples. Got {len(samples)}.')
+
+    # Check not already retraining
+    with _retrain_lock:
+        if _retrain_status['state'] == 'retraining':
+            raise HTTPException(409, 'Retraining already in progress. Please wait.')
 
     # Generate unique class key
     cls_key = req.sign_class or f'CUSTOM_{word.replace(" ","_")}'
 
-    # Save to CSV
+    # Save samples to CSV
     import csv
-    csv_path = os.path.join(RAW_DIR, f'{cls_key}.csv')
+    csv_path  = os.path.join(RAW_DIR, f'{cls_key}.csv')
     feat_cols = (
         [f'r_lm{i}_{ax}' for i in range(21) for ax in ['x','y','z']] +
         [f'l_lm{i}_{ax}' for i in range(21) for ax in ['x','y','z']]
@@ -424,45 +460,267 @@ async def add_sign(req: SignAddRequest, background_tasks: BackgroundTasks):
         if is_new:
             writer.writerow(feat_cols + ['label'])
         for sample in samples:
-            writer.writerow(sample + [cls_key])
+            writer.writerow(list(sample) + [cls_key])
 
-    # Update CLASS_TO_WORD mapping in memory
+    # Update vocab in memory
     CLASS_TO_WORD[cls_key] = word
 
-    # Register with KNN (instant, no full retrain)
-    background_tasks.add_task(_knn_register, cls_key, word, samples)
+    # Generate GIF from captured frames or placeholder
+    if req.gif_frames and len(req.gif_frames) >= 6:
+        _generate_gif_from_frames(word, req.gif_frames)
+    else:
+        _generate_placeholder_gif(word)
+
+    # Trigger background MLP retrain
+    background_tasks.add_task(_background_retrain, cls_key, word)
 
     return {
-        'success': True,
-        'message': f'"{word}" added with {len(samples)} samples. Available immediately.',
+        'success'  : True,
+        'message'  : f'"{word}" saved. Model retraining started — takes 2-3 minutes.',
         'class_key': cls_key,
+        'retraining': True,
     }
 
 
-def _knn_register(cls_key: str, word: str, samples: list):
+def _background_retrain(cls_key: str, word: str):
     """
-    Fast KNN registration — no full retrain needed.
-    Saves centroid for instant recognition via nearest-neighbour fallback.
-    Full MLP retrain can be triggered offline.
+    Full MLP retrain in background thread.
+    Reloads model into memory when done.
     """
-    centroid     = np.mean(samples, axis=0).tolist()
-    knn_path     = os.path.join(MODEL_DIR, 'knn_centroids.json')
-    if os.path.exists(knn_path):
-        with open(knn_path) as f:
-            knn_data = json.load(f)
-    else:
-        knn_data = {}
-    knn_data[cls_key] = {'word': word, 'centroid': centroid}
-    with open(knn_path, 'w') as f:
-        json.dump(knn_data, f)
-    print(f'[API] KNN registered: {cls_key} -> {word}')
+    global _retrain_status, _mlp_model, _idx_to_label, _label_map
+
+    with _retrain_lock:
+        _retrain_status = {'state': 'retraining', 'message': f'Retraining for "{word}"...'}
+
+    print(f'[Retrain] Starting retrain for {cls_key} -> {word}')
+
+    try:
+        import csv
+        import pandas as pd
+        from sklearn.preprocessing import LabelEncoder
+        from sklearn.model_selection import train_test_split
+        from torch.utils.data import TensorDataset, DataLoader
+
+        # ── Load all CSVs ──────────────────────────────────────────
+        dfs = []
+        for csv_file in sorted(Path(RAW_DIR).glob('*.csv')):
+            df = pd.read_csv(csv_file)
+            dfs.append(df)
+        if not dfs:
+            raise ValueError('No CSV files found in raw dir')
+
+        data = pd.concat(dfs, ignore_index=True)
+        feat_cols = [c for c in data.columns
+                     if c.startswith('r_lm') or c.startswith('l_lm')]
+
+        # ── Encode labels ──────────────────────────────────────────
+        le          = LabelEncoder()
+        data['idx'] = le.fit_transform(data['label'])
+        classes     = list(le.classes_)
+        num_classes = len(classes)
+
+        print(f'[Retrain] {len(data)} samples, {num_classes} classes')
+
+        # ── Split ──────────────────────────────────────────────────
+        X = data[feat_cols].values.astype(np.float32)
+        y = data['idx'].values
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y, test_size=0.15, random_state=42, stratify=y)
+
+        # ── Build model ────────────────────────────────────────────
+        device = get_device()
+        model  = LandmarkMLP(
+            input_dim=len(feat_cols),
+            hidden=RETRAIN_HIDDEN,
+            num_classes=num_classes,
+            dropout=RETRAIN_DROPOUT,
+        ).to(device)
+
+        Xt = torch.from_numpy(X_train).to(device)
+        yt = torch.from_numpy(y_train).long().to(device)
+        Xv = torch.from_numpy(X_val).to(device)
+        yv = torch.from_numpy(y_val).long().to(device)
+
+        loader    = DataLoader(TensorDataset(Xt, yt),
+                               batch_size=RETRAIN_BATCH, shuffle=True)
+        criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.05)
+        optimizer = torch.optim.AdamW(model.parameters(),
+                                      lr=RETRAIN_LR, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                        optimizer, T_max=RETRAIN_EPOCHS)
+
+        best_acc   = 0.0
+        best_state = None
+        no_improve = 0
+
+        for epoch in range(1, RETRAIN_EPOCHS + 1):
+            model.train()
+            for xb, yb in loader:
+                optimizer.zero_grad(set_to_none=True)
+                criterion(model(xb), yb).backward()
+                optimizer.step()
+            scheduler.step()
+
+            model.eval()
+            with torch.no_grad():
+                acc = (model(Xv).argmax(1) == yv).float().mean().item()
+
+            if acc > best_acc:
+                best_acc   = acc
+                best_state = {k: v.clone() for k, v in model.state_dict().items()}
+                no_improve = 0
+            else:
+                no_improve += 1
+
+            if epoch % 20 == 0:
+                print(f'[Retrain] Epoch {epoch}/{RETRAIN_EPOCHS}  val={acc*100:.1f}%')
+
+            if no_improve >= RETRAIN_PATIENCE:
+                print(f'[Retrain] Early stop at epoch {epoch}')
+                break
+
+            # Update progress message
+            pct = int(epoch / RETRAIN_EPOCHS * 100)
+            with _retrain_lock:
+                _retrain_status['message'] = (
+                    f'Retraining... {pct}% (val={best_acc*100:.1f}%)')
+
+        model.load_state_dict(best_state)
+
+        # ── Save model ─────────────────────────────────────────────
+        idx_to_label = {str(i): c for i, c in enumerate(classes)}
+        label_to_idx = {c: i for i, c in enumerate(classes)}
+        torch.save({
+            'model_state' : best_state,
+            'input_dim'   : len(feat_cols),
+            'hidden'      : RETRAIN_HIDDEN,
+            'num_classes' : num_classes,
+            'dropout'     : RETRAIN_DROPOUT,
+            'classes'     : classes,
+            'label_to_idx': label_to_idx,
+            'idx_to_label': idx_to_label,
+        }, MLP_PATH)
+
+        new_label_map = {
+            'classes'       : classes,
+            'label_to_idx'  : label_to_idx,
+            'idx_to_label'  : idx_to_label,
+            'input_dim'     : len(feat_cols),
+        }
+        with open(LABEL_PATH, 'w') as f:
+            json.dump(new_label_map, f, indent=2)
+
+        # ── Reload into memory ─────────────────────────────────────
+        model.eval()
+        _mlp_model    = model
+        _idx_to_label = {int(k): v for k, v in idx_to_label.items()}
+        _label_map    = new_label_map
+
+        # Update CLASS_TO_WORD for any new custom classes
+        for cls in classes:
+            if cls.startswith('CUSTOM_') and cls not in CLASS_TO_WORD:
+                CLASS_TO_WORD[cls] = cls.replace('CUSTOM_', '').replace('_', ' ')
+
+        print(f'[Retrain] Done. {num_classes} classes. Best val={best_acc*100:.2f}%')
+        with _retrain_lock:
+            _retrain_status = {
+                'state'  : 'idle',
+                'message': f'"{word}" added. Model updated ({num_classes} classes, val={best_acc*100:.1f}%)',
+            }
+
+    except Exception as e:
+        print(f'[Retrain] ERROR: {e}')
+        with _retrain_lock:
+            _retrain_status = {
+                'state'  : 'error',
+                'message': f'Retrain failed: {str(e)}',
+            }
+
+
+def _generate_gif_from_frames(word: str, frames_b64: list):
+    """Build reference GIF from base64 JPEG frames captured in browser."""
+    try:
+        from PIL import Image
+        from io import BytesIO
+        gif_word = word.replace(' ', '_')
+        gif_path = os.path.join(REF_DIR, f'{gif_word}.gif')
+        pil_frames = []
+        for b64 in frames_b64[:60]:   # max 60 frames
+            try:
+                img_bytes = base64.b64decode(b64)
+                img = Image.open(BytesIO(img_bytes)).convert('RGB')
+                img = img.resize((200, 200), Image.LANCZOS)
+                pil_frames.append(img)
+            except Exception:
+                continue
+        if len(pil_frames) >= 3:
+            pil_frames[0].save(
+                gif_path,
+                save_all=True,
+                append_images=pil_frames[1:],
+                duration=50,
+                loop=0
+            )
+            print(f'[API] Real GIF saved: {gif_path} ({len(pil_frames)} frames)')
+        else:
+            _generate_placeholder_gif(word)
+    except Exception as e:
+        print(f'[API] GIF from frames failed: {e}')
+        _generate_placeholder_gif(word)
+
+
+def _generate_placeholder_gif(word: str):
+    """Create a simple animated placeholder GIF for contributed signs."""
+    try:
+        from PIL import Image, ImageDraw
+        gif_word = word.replace(' ', '_')
+        gif_path = os.path.join(REF_DIR, f'{gif_word}.gif')
+        if os.path.exists(gif_path):
+            # Always regenerate to fix any broken placeholders
+            pass
+        frames = []
+        colors = [(0, 212, 170), (0, 180, 145), (0, 150, 120)]
+        for i in range(6):
+            img  = Image.new('RGB', (200, 200), color=(17, 23, 32))
+            draw = ImageDraw.Draw(img)
+            # Animated border — pulses between frames
+            c = colors[i % len(colors)]
+            draw.rectangle([8, 8, 192, 192], outline=c, width=3)
+            draw.rectangle([20, 20, 180, 180], outline=(30, 40, 55), width=1)
+            # Hand shape drawn with lines (no emoji needed)
+            cx, cy = 100, 90
+            # Palm circle
+            draw.ellipse([cx-22, cy-18, cx+22, cy+18], outline=c, width=2)
+            # Five fingers as lines
+            fingers = [(-18,-36),(-9,-40),(0,-42),(9,-40),(18,-36)]
+            for fx, fy in fingers:
+                draw.line([cx+fx//2, cy-18, cx+fx, cy+fy], fill=c, width=3)
+            # Word text — split long words
+            display = word[:10] + ('.' if len(word) > 10 else '')
+            # Draw word with manual pixel font sizing
+            text_y = 140
+            draw.rectangle([15, text_y-8, 185, text_y+14], fill=(25, 35, 48))
+            draw.text((100, text_y), display, fill=(232, 240, 254), anchor='mm')
+            # Community label
+            draw.text((100, 168), 'Community Sign', fill=(60, 90, 105), anchor='mm')
+            frames.append(img)
+        frames[0].save(
+            gif_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=400,
+            loop=0
+        )
+        print(f'[API] Placeholder GIF created: {gif_path}')
+    except Exception as e:
+        print(f'[API] GIF generation failed: {e}')
 
 
 @app.get('/api/status')
 async def get_status():
     if not _models_ready:
         return {'state': 'loading', 'message': 'Models loading...'}
-    return {'state': 'idle', 'message': 'ready'}
+    return _retrain_status
 
 
 # ── Serve static files ────────────────────────────────────────────────────────

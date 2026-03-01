@@ -281,6 +281,21 @@ nav {
 .toast.success { border-color:var(--teal); }
 .toast.error   { border-color:var(--red); }
 
+/* Retraining banner */
+.retrain-banner {
+  display:none;
+  position:fixed; bottom:0; left:0; right:0; z-index:500;
+  background:rgba(17,23,32,0.97);
+  border-top:1px solid var(--teal);
+  padding:12px 40px;
+  align-items:center; justify-content:space-between; gap:16px;
+}
+.retrain-banner.show { display:flex; }
+.retrain-text { font-size:0.88rem; color:var(--teal); }
+.retrain-bar-wrap { flex:1; max-width:300px; height:4px; background:var(--border); border-radius:2px; }
+.retrain-bar { height:100%; background:var(--teal); border-radius:2px; transition:width 1s; animation:pulse-bar 2s ease-in-out infinite; }
+@keyframes pulse-bar { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
 /* Responsive */
 @media(max-width:900px){
   .main-layout { grid-template-columns:1fr; }
@@ -341,6 +356,11 @@ async function waitForModels() {
   overlay.style.transition = 'opacity 0.5s';
   overlay.style.opacity    = '0';
   setTimeout(() => overlay.style.display = 'none', 500);
+  // Check if a retrain was triggered from contribute page
+  if (localStorage.getItem('sentisign_retraining') === '1') {
+    localStorage.removeItem('sentisign_retraining');
+    startRetrainPolling();
+  }
 }
 waitForModels();
 </script>
@@ -797,6 +817,38 @@ async function generateAndSpeak() {
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
+// Poll retraining status and show banner
+let retrainPollInterval = null;
+
+function startRetrainPolling() {
+  const banner = document.getElementById('retrainBanner');
+  const msg    = document.getElementById('retrainMsg');
+  banner.classList.add('show');
+  retrainPollInterval = setInterval(async () => {
+    try {
+      const res  = await fetch('/api/status');
+      const data = await res.json();
+      if (data.state === 'retraining') {
+        msg.textContent = data.message || 'Model retraining...';
+      } else if (data.state === 'idle' && data.message.includes('added')) {
+        msg.textContent = '✓ ' + data.message;
+        clearInterval(retrainPollInterval);
+        // Add dismiss button instead of auto-hiding
+        const dismiss = document.createElement('button');
+        dismiss.textContent = '✕';
+        dismiss.style.cssText = 'background:none;border:none;color:var(--teal);cursor:pointer;font-size:1rem;padding:0 8px;';
+        dismiss.onclick = () => banner.classList.remove('show');
+        banner.appendChild(dismiss);
+      } else if (data.state === 'error') {
+        msg.textContent = '✕ ' + data.message;
+        msg.style.color = 'var(--red)';
+        setTimeout(() => banner.classList.remove('show'), 5000);
+        clearInterval(retrainPollInterval);
+      }
+    } catch(e) { /* silent */ }
+  }, 3000);
+}
+
 function showToast(msg, type='success') {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -812,5 +864,12 @@ window.addEventListener('resize', () => {
   }
 });
 </script>
+<div class="retrain-banner" id="retrainBanner">
+  <span class="retrain-text" id="retrainMsg">Model retraining...</span>
+  <div class="retrain-bar-wrap">
+    <div class="retrain-bar" style="width:60%"></div>
+  </div>
+  <span style="font-size:0.8rem;color:var(--muted);">New sign will be available when complete</span>
+</div>
 </body>
 </html>
