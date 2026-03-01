@@ -291,6 +291,60 @@ nav {
 </head>
 <body>
 
+<div id="loadingOverlay" style="
+  position:fixed; inset:0; z-index:9999;
+  background:#0a0e14;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:20px;">
+  <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:2rem; color:#00d4aa;">
+    SentiSign
+  </div>
+  <div style="color:#5a7a8a; font-size:0.95rem;" id="loadingMsg">
+    Loading models...
+  </div>
+  <div style="width:200px; height:4px; background:#1e2d3d; border-radius:2px;">
+    <div id="loadingBar" style="height:100%; width:0%; background:#00d4aa; border-radius:2px; transition:width 0.6s;"></div>
+  </div>
+</div>
+
+<script>
+async function waitForModels() {
+  const overlay = document.getElementById('loadingOverlay');
+  const msg     = document.getElementById('loadingMsg');
+  const bar     = document.getElementById('loadingBar');
+  const steps = [
+    { pct: 20, text: 'Loading sign recognition model...' },
+    { pct: 50, text: 'Loading emotion detection model...' },
+    { pct: 80, text: 'Loading language and speech models...' },
+    { pct: 100, text: 'Almost ready...' },
+  ];
+  for (const step of steps) {
+    msg.textContent = step.text;
+    bar.style.width = step.pct + '%';
+    await new Promise(r => setTimeout(r, 800));
+  }
+  // Poll /api/status until server reports idle (all models loaded)
+  let ready = false;
+  while (!ready) {
+    try {
+      const res  = await fetch('/api/status');
+      const data = await res.json();
+      if (data.state === 'idle') ready = true;
+      else await new Promise(r => setTimeout(r, 1000));
+    } catch(e) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+  msg.textContent = 'All models ready ✓';
+  bar.style.width = '100%';
+  await new Promise(r => setTimeout(r, 700));
+  overlay.style.transition = 'opacity 0.5s';
+  overlay.style.opacity    = '0';
+  setTimeout(() => overlay.style.display = 'none', 500);
+}
+waitForModels();
+</script>
+
 <nav>
   <div class="nav-logo">Senti<span>Sign</span></div>
   <div class="nav-links">

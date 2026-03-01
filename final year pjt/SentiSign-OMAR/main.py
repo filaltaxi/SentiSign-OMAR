@@ -77,8 +77,9 @@ _device       = None
 _label_map    = None
 
 # Retrain state
-_retrain_status = {'state': 'idle', 'message': ''}
-_retrain_lock   = threading.Lock()
+_retrain_status  = {'state': 'idle', 'message': ''}
+_retrain_lock    = threading.Lock()
+_models_ready    = False
 
 
 # ── MLP Architecture ──────────────────────────────────────────────────────────
@@ -142,9 +143,12 @@ def load_emotion():
 # ── Startup ───────────────────────────────────────────────────────────────────
 @app.on_event('startup')
 async def startup():
+    global _models_ready
     load_mlp()
     load_emotion()
     _preload_slm_and_tts()
+    _models_ready = True
+    print('[API] All models ready.')
 
 def _preload_slm_and_tts():
     """Load Flan-T5 and Chatterbox into memory at startup so first request is fast."""
@@ -456,7 +460,9 @@ def _knn_register(cls_key: str, word: str, samples: list):
 
 @app.get('/api/status')
 async def get_status():
-    return _retrain_status
+    if not _models_ready:
+        return {'state': 'loading', 'message': 'Models loading...'}
+    return {'state': 'idle', 'message': 'ready'}
 
 
 # ── Serve static files ────────────────────────────────────────────────────────
