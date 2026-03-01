@@ -56,17 +56,11 @@ uv sync
 uv run python run_pipeline.py
 ```
 
-**4 — Download models**
+**4 — Models**
 
-The following model files are not included in the repository (too large for GitHub). Place them in the correct directories:
+This repo includes the non-SLM model files under `models/` (landmark + emotion).
 
-| File | Directory | Source |
-|------|-----------|--------|
-| `landmark_mlp.pth` | `models/landmark/` | Train locally (see below) |
-| `landmark_rf.pkl` | `models/landmark/` | Train locally (see below) |
-| `label_map.json` | `models/landmark/` | Train locally (see below) |
-| `resnet_emotion.pth` | `models/emotion/` | Provided separately |
-| `flan-t5-large/` | `slm/models/` | Auto-downloaded on first run |
+The sentence model (`flan-t5-large/`) is not committed (too large) and is downloaded into `slm/models/` on first run (or via `slm/download_model.py`).
 
 **5 — Collect training data (first time only)**
 ```bash

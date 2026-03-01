@@ -30,8 +30,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from collections import Counter
-from PIL import Image
-import torchvision.transforms as T
 
 _SRC  = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_SRC)
@@ -58,18 +56,32 @@ CLASS_TO_WORD = {
 EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-MIN_CONFIDENCE  = 0.60    # softmax probability threshold
 HOLD_FRAMES     = 10      # consecutive frames same sign must be held
 FLUSH_SECONDS   = 30.0    # seconds of no new word → auto end
 EMOTION_EVERY_N = 5       # run emotion on every Nth frame to save CPU
-FACE_PADDING    = 20
 DEFAULT_EMOTION = 'neutral'
+
+# Sign commit thresholds (fast path + slow path for low-confidence but stable signs)
+SIGN_HIGH_CONFIDENCE = 0.60
+SIGN_LOW_CONFIDENCE = 0.30
+SIGN_LOW_CONF_MARGIN = 0.12
+SIGN_LOW_HOLD_FRAMES = 26
+
+# Emotion/face tracking (reduce flicker + adapt faster)
+EMO_CONFIDENCE_THRESHOLD = 0.40
+EMO_PROBS_EMA_ALPHA = 0.60
+EMO_RECENT_WINDOW_SIZE = 28
+FACE_BOX_EMA_ALPHA = 0.25
+FACE_BOX_HOLD_FRAMES = 10
+FACE_BOX_IOU_HINT_THRESHOLD = 0.15
+FACE_ROI_PADDING_RATIO = 0.10
 
 # ── Model paths ───────────────────────────────────────────────────────────────
 _MLP_PATH      = os.path.join(_ROOT, 'models', 'landmark', 'landmark_mlp.pth')
 _LABEL_PATH    = os.path.join(_ROOT, 'models', 'landmark', 'label_map.json')
 _EMO_PATH      = os.path.join(_ROOT, 'models', 'emotion',  'resnet_emotion.pth')
 _HAAR_PATH     = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+_SIGN_OVERRIDES_PATH = os.path.join(_ROOT, 'models', 'landmark', 'sign_overrides.json')
 
 # ── Cached globals ────────────────────────────────────────────────────────────
 _mlp_model    = None
@@ -79,12 +91,7 @@ _emo_model    = None
 _face_cascade = None
 _device       = None
 
-_emo_preprocess = T.Compose([
-    T.Resize((44, 44)),
-    T.ToTensor(),
-    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-])
-
+_clahe = None
 
 # ── MLP architecture (must match train_landmark_classifier.py) ────────────────
 
@@ -172,6 +179,7 @@ def _load_mlp():
     _mlp_model = model
     _mlp_input_dim = input_dim
     print(f'[sign_recognizer] Landmark MLP loaded. Classes: {num_classes}')
+    _apply_sign_mappings(_idx_to_label)
     return _mlp_model, _idx_to_label
 
 
@@ -192,17 +200,180 @@ def _load_emotion_model():
 
 # ── Inference helpers ─────────────────────────────────────────────────────────
 
+def _apply_sign_mappings(idx_to_label):
+    """Extend CLASS_TO_WORD from model classes + optional overrides file."""
+    # Auto-map CUSTOM_* classes to a reasonable default word.
+    custom_added = 0
+    try:
+        classes = set(idx_to_label.values()) if isinstance(idx_to_label, dict) else set()
+    except Exception:
+        classes = set()
+    for cls in classes:
+        if not isinstance(cls, str):
+            continue
+        if not cls.startswith('CUSTOM_'):
+            continue
+        if cls in CLASS_TO_WORD:
+            continue
+        word = cls.replace('CUSTOM_', '', 1).replace('_', ' ').strip()
+        if word:
+            CLASS_TO_WORD[cls] = word.upper()
+            custom_added += 1
+
+    # Apply explicit overrides if present.
+    overrides_applied = 0
+    if os.path.isfile(_SIGN_OVERRIDES_PATH):
+        try:
+            with open(_SIGN_OVERRIDES_PATH) as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError('sign_overrides.json must be a JSON object: {"CLASS": "WORD"}')
+            for cls, word in data.items():
+                if not isinstance(cls, str) or not cls.strip():
+                    continue
+                key = cls.strip()
+                if word is None:
+                    CLASS_TO_WORD[key] = None
+                    overrides_applied += 1
+                    continue
+                if not isinstance(word, str):
+                    continue
+                w = word.strip()
+                CLASS_TO_WORD[key] = (w.upper() if w else None)
+                overrides_applied += 1
+        except Exception as e:
+            print(f'[sign_recognizer] Warning: failed to load sign overrides: {e}')
+
+    if custom_added or overrides_applied:
+        parts = []
+        if custom_added:
+            parts.append(f'auto-mapped {custom_added} CUSTOM_*')
+        if overrides_applied:
+            parts.append(f'applied {overrides_applied} overrides')
+        print(f'[sign_recognizer] Sign mapping updated ({", ".join(parts)})')
+
+
+def _load_clahe():
+    global _clahe
+    if _clahe is None:
+        _clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    return _clahe
+
+
+def _box_area(box):
+    _, _, w, h = box
+    return max(0, int(w)) * max(0, int(h))
+
+
+def _box_iou(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+
+    ax2 = ax + aw
+    ay2 = ay + ah
+    bx2 = bx + bw
+    by2 = by + bh
+
+    inter_x1 = max(ax, bx)
+    inter_y1 = max(ay, by)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+
+    inter_w = max(0, inter_x2 - inter_x1)
+    inter_h = max(0, inter_y2 - inter_y1)
+    inter = inter_w * inter_h
+    if inter <= 0:
+        return 0.0
+
+    union = _box_area(a) + _box_area(b) - inter
+    if union <= 0:
+        return 0.0
+    return float(inter) / float(union)
+
+
+def _smooth_box(prev_box, new_box, alpha):
+    px, py, pw, ph = prev_box
+    nx, ny, nw, nh = new_box
+    inv = 1.0 - alpha
+    return (
+        int(round((px * inv) + (nx * alpha))),
+        int(round((py * inv) + (ny * alpha))),
+        int(round((pw * inv) + (nw * alpha))),
+        int(round((ph * inv) + (nh * alpha))),
+    )
+
+
+def _filter_face_boxes(frame_shape, boxes):
+    h, w = frame_shape[:2]
+    frame_area = float(h * w)
+    if frame_area <= 0:
+        return boxes
+
+    keep = []
+    for x, y, bw, bh in boxes:
+        if bw <= 0 or bh <= 0:
+            continue
+        area = float(bw * bh) / frame_area
+        aspect = float(bw) / float(bh)
+        if area < 0.003:
+            continue
+        if area > 0.75:
+            continue
+        if aspect < 0.55 or aspect > 1.80:
+            continue
+        keep.append((int(x), int(y), int(bw), int(bh)))
+    return keep
+
+
+def _select_face_box(boxes, hint_box):
+    if not boxes:
+        return None
+
+    if hint_box is not None:
+        best_iou = -1.0
+        best = None
+        for b in boxes:
+            iou = _box_iou(hint_box, b)
+            if iou > best_iou:
+                best_iou = iou
+                best = b
+        if best is not None and best_iou >= FACE_BOX_IOU_HINT_THRESHOLD:
+            return best
+
+    return max(boxes, key=_box_area)
+
+
+def _crop_face_roi(frame, box, padding_ratio):
+    x, y, w, h = box
+    pad_x = int(w * padding_ratio)
+    pad_y = int(h * padding_ratio)
+
+    x1 = max(0, x - pad_x)
+    y1 = max(0, y - pad_y)
+    x2 = min(frame.shape[1], x + w + pad_x)
+    y2 = min(frame.shape[0], y + h + pad_y)
+
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return frame[y1:y2, x1:x2]
+
+
 def _classify_landmarks(model, idx_to_label, landmarks, device):
-    """Run MLP on extracted feature vector. Returns (class_name, confidence)."""
+    """Run MLP on extracted feature vector. Returns (class_name, top1_conf, top1_minus_top2)."""
     try:
         tensor = torch.from_numpy(landmarks).unsqueeze(0).to(device)
         with torch.no_grad():
             probs = torch.softmax(model(tensor), dim=1).cpu().numpy()[0]
-        idx        = int(np.argmax(probs))
+        idx = int(np.argmax(probs))
         confidence = float(probs[idx])
-        return idx_to_label.get(idx, ''), confidence
+        if probs.size >= 2:
+            top2 = float(np.partition(probs, -2)[-2])
+        else:
+            top2 = 0.0
+        margin = float(confidence - top2)
+        return idx_to_label.get(idx, ''), confidence, margin
     except Exception:
-        return '', 0.0
+        return '', 0.0, 0.0
 
 
 def _extract_landmark_features(results, expected_dim: int):
@@ -259,32 +430,30 @@ def _extract_landmark_features(results, expected_dim: int):
     return np.concatenate([base, pad])
 
 
-def _classify_emotion(emo_model, face_cascade, frame, device):
-    """Detect face and run ResNet emotion classifier."""
-    if emo_model is None or face_cascade is None:
-        return None, None
+def _classify_emotion(emo_model, frame, device, face_box, clahe):
+    """Run ResNet emotion classifier on a provided face box. Returns probs or None."""
+    if emo_model is None or face_box is None:
+        return None
     try:
-        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(60, 60))
-        if len(faces) == 0:
-            return None, None
-        x, y, w, h = faces[0]
-        x1 = max(0, x - FACE_PADDING)
-        y1 = max(0, y - FACE_PADDING)
-        x2 = min(frame.shape[1], x + w + FACE_PADDING)
-        y2 = min(frame.shape[0], y + h + FACE_PADDING)
-        face_roi = frame[y1:y2, x1:x2]
-        tensor   = _emo_preprocess(
-            Image.fromarray(cv2.cvtColor(face_roi, cv2.COLOR_BGR2RGB))
-        ).unsqueeze(0).to(device)
-        with torch.no_grad():
+        from inference import preprocess_roi
+        face_roi = _crop_face_roi(frame, face_box, FACE_ROI_PADDING_RATIO)
+        if face_roi is None or face_roi.size == 0:
+            return None
+        tensor = preprocess_roi(
+            roi_bgr=face_roi,
+            img_size=44,
+            in_channels=3,
+            imagenet_norm=True,
+            clahe=clahe,
+        ).to(device)
+        with torch.inference_mode():
             out = emo_model(tensor)
             if isinstance(out, dict):
                 out = out.get('logits', list(out.values())[0])
-            pred = torch.argmax(out, dim=1).item()
-        return EMOTION_LABELS[pred], (x1, y1, x2, y2)
+            probs = torch.softmax(out, dim=1).cpu().numpy()[0]
+        return probs
     except Exception:
-        return None, None
+        return None
 
 
 # ── Main function ─────────────────────────────────────────────────────────────
@@ -343,10 +512,20 @@ def capture_words_and_emotion() -> tuple:
 
     word_buffer    = []
     emotion_votes  = Counter()
-    hold_counter   = 0
+    emotion_scores = Counter()
+    recent_items   = []
+    recent_scores  = Counter()
+    smoothed_probs = None
+    now_emo_label  = None
+    now_emo_conf   = 0.0
+    tracked_face_box = None
+    face_hold = 0
+    hold_counter_high = 0
+    hold_counter_low = 0
     current_cls    = ''
     last_word_time = time.time()
     frame_count    = 0
+    clahe = _load_clahe()
 
     enter_pressed = threading.Event()
     def _wait_enter():
@@ -369,7 +548,7 @@ def capture_words_and_emotion() -> tuple:
                 break
             frame_count += 1
 
-            cls_name, confidence = '', 0.0
+            cls_name, confidence, margin = '', 0.0, 0.0
 
             # ── SIGN RECOGNITION (every frame via landmarks, if enabled) ───
             if hands is not None and _hands_module is not None and _drawing is not None:
@@ -383,48 +562,112 @@ def capture_words_and_emotion() -> tuple:
 
                     feats = _extract_landmark_features(results, expected_dim)
                     if feats is not None:
-                        cls_name, confidence = _classify_landmarks(
+                        cls_name, confidence, margin = _classify_landmarks(
                             mlp_model, idx_to_label, feats, device)
 
                     # Hold logic
-                    if cls_name == current_cls and confidence >= MIN_CONFIDENCE:
-                        hold_counter += 1
+                    if cls_name != current_cls:
+                        current_cls = cls_name
+                        hold_counter_high = 0
+                        hold_counter_low = 0
                     else:
-                        current_cls  = cls_name
-                        hold_counter = 0
+                        if confidence >= SIGN_HIGH_CONFIDENCE:
+                            hold_counter_high += 1
+                        else:
+                            hold_counter_high = 0
+
+                        if confidence >= SIGN_LOW_CONFIDENCE and margin >= SIGN_LOW_CONF_MARGIN:
+                            hold_counter_low += 1
+                        else:
+                            hold_counter_low = 0
 
                     # Register word when held long enough
-                    if (hold_counter >= HOLD_FRAMES
+                    should_commit = (hold_counter_high >= HOLD_FRAMES) or (hold_counter_low >= SIGN_LOW_HOLD_FRAMES)
+                    if (should_commit
                             and cls_name in CLASS_TO_WORD
                             and CLASS_TO_WORD[cls_name] is not None):
                         word = CLASS_TO_WORD[cls_name]
                         if not word_buffer or word_buffer[-1] != word:
                             word_buffer.append(word)
                             last_word_time = time.time()
-                            hold_counter   = 0
-                            print(f'  + [{cls_name}] -> {word:<14}  Words: {word_buffer}')
+                            hold_counter_high = 0
+                            hold_counter_low = 0
+                            mode = 'HIGH' if confidence >= SIGN_HIGH_CONFIDENCE else 'LOW'
+                            print(f'  + ({mode}) [{cls_name}] -> {word:<14}  Words: {word_buffer}')
 
             # ── EMOTION RECOGNITION (every Nth frame) ─────────────────────
             if frame_count % EMOTION_EVERY_N == 0:
-                emo_label, fbox = _classify_emotion(
-                    emo_model, face_cascade, frame, device)
-                if emo_label:
-                    emotion_votes[emo_label] += 1
-                    if fbox:
-                        cv2.rectangle(frame,
-                                      (fbox[0], fbox[1]),
-                                      (fbox[2], fbox[3]),
-                                      (255, 100, 0), 2)
-                        cv2.putText(frame, emo_label,
-                                    (fbox[0], fbox[1] - 8),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    0.55, (255, 100, 0), 2)
+                detected_box = None
+                if emo_model is not None and face_cascade is not None:
+                    try:
+                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(60, 60))
+                        boxes = _filter_face_boxes(
+                            frame.shape,
+                            [tuple(map(int, f)) for f in faces],
+                        )
+                        detected_box = _select_face_box(boxes, tracked_face_box)
+                    except Exception:
+                        detected_box = None
+
+                if detected_box is not None:
+                    tracked_face_box = (
+                        detected_box if tracked_face_box is None
+                        else _smooth_box(tracked_face_box, detected_box, FACE_BOX_EMA_ALPHA)
+                    )
+                    face_hold = FACE_BOX_HOLD_FRAMES
+                elif face_hold > 0:
+                    face_hold -= 1
+                else:
+                    tracked_face_box = None
+
+                probs = _classify_emotion(emo_model, frame, device, tracked_face_box, clahe)
+                if probs is not None:
+                    if smoothed_probs is None:
+                        smoothed_probs = probs
+                    else:
+                        smoothed_probs = (EMO_PROBS_EMA_ALPHA * probs) + ((1.0 - EMO_PROBS_EMA_ALPHA) * smoothed_probs)
+
+                    idx = int(np.argmax(smoothed_probs))
+                    now_emo_label = EMOTION_LABELS[idx]
+                    now_emo_conf = float(smoothed_probs[idx])
+
+                    if tracked_face_box is not None and now_emo_conf >= EMO_CONFIDENCE_THRESHOLD:
+                        emotion_votes[now_emo_label] += 1
+                        emotion_scores[now_emo_label] += now_emo_conf
+
+                        recent_items.append((now_emo_label, now_emo_conf))
+                        recent_scores[now_emo_label] += now_emo_conf
+                        if len(recent_items) > EMO_RECENT_WINDOW_SIZE:
+                            old_em, old_conf = recent_items.pop(0)
+                            recent_scores[old_em] -= old_conf
+                            if recent_scores[old_em] <= 1e-6:
+                                del recent_scores[old_em]
 
             # ── OVERLAY ───────────────────────────────────────────────────
+            # Draw face box every frame to avoid flicker (box updates run every Nth frame).
+            if tracked_face_box is not None:
+                x, y, w, h = tracked_face_box
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 100, 0), 2)
+                if now_emo_label is not None:
+                    cv2.putText(
+                        frame,
+                        f'{now_emo_label} ({now_emo_conf:.2f})',
+                        (x, max(0, y - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55,
+                        (255, 100, 0),
+                        2,
+                    )
+
             word_disp = CLASS_TO_WORD.get(cls_name) or ''
             buf_disp  = ' | '.join(word_buffer) if word_buffer else '...'
-            top_emo   = emotion_votes.most_common(1)[0][0] \
-                        if emotion_votes else '?'
+            if recent_scores:
+                top_emo = recent_scores.most_common(1)[0][0]
+            elif emotion_votes:
+                top_emo = emotion_votes.most_common(1)[0][0]
+            else:
+                top_emo = '?'
 
             if hands is not None:
                 cv2.putText(frame,
@@ -432,7 +675,9 @@ def capture_words_and_emotion() -> tuple:
                     (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
 
                 # Hold progress bar
-                bar_w = int((min(hold_counter, HOLD_FRAMES) / HOLD_FRAMES) * 180)
+                high_p = min(hold_counter_high / max(1, HOLD_FRAMES), 1.0)
+                low_p = min(hold_counter_low / max(1, SIGN_LOW_HOLD_FRAMES), 1.0)
+                bar_w = int(max(high_p, low_p) * 180)
                 cv2.rectangle(frame, (10, 38), (190, 52), (40, 40, 40), -1)
                 cv2.rectangle(frame, (10, 38), (10 + bar_w, 52), (0, 255, 0), -1)
             else:
@@ -442,16 +687,26 @@ def capture_words_and_emotion() -> tuple:
 
             cv2.putText(frame, f'Words: {buf_disp}',
                 (10, 74), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 0), 2)
+            now_txt = f'{now_emo_label} ({now_emo_conf:.2f})' if now_emo_label else '...'
+            cv2.putText(
+                frame,
+                f'Emotion: Now {now_txt}  |  Recent {top_emo}  ({sum(emotion_votes.values())} reads)',
+                (10, 98),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.48,
+                (100, 200, 255),
+                1,
+            )
             cv2.putText(frame,
-                f'Emotion: {top_emo}  ({sum(emotion_votes.values())} readings)',
-                (10, 98), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (100, 200, 255), 1)
-            cv2.putText(frame,
-                'GREEN=hand landmarks  BLUE=face  ENTER to finish',
+                'GREEN=hand landmarks  BLUE=face  ENTER/q to finish',
                 (10, frame.shape[0] - 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.40, (160, 160, 160), 1)
 
             cv2.imshow('SentiSign  |  Sign + Emotion', frame)
-            cv2.waitKey(1)
+            key = cv2.waitKey(1) & 0xFF
+            if key in (13, 10, ord('q')):
+                enter_pressed.set()
+                break
     finally:
         if hands is not None:
             hands.close()
@@ -465,9 +720,12 @@ def capture_words_and_emotion() -> tuple:
         word_buffer = _manual_word_fallback()
 
     if emotion_votes:
-        final_emotion  = emotion_votes.most_common(1)[0][0]
+        score_source = recent_scores if recent_scores else emotion_scores
+        final_emotion = score_source.most_common(1)[0][0]
         total_readings = sum(emotion_votes.values())
         print(f'\n  Emotion votes : {dict(emotion_votes.most_common())}')
+        if recent_scores:
+            print(f'  Emotion recent: {dict(recent_scores.most_common())}')
         print(f'  Final emotion : {final_emotion}  ({total_readings} readings)')
     else:
         final_emotion = DEFAULT_EMOTION
