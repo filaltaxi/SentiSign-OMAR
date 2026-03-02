@@ -38,7 +38,9 @@ def load_model():
     source = MODEL_DIR if os.path.isdir(MODEL_DIR) else MODEL_NAME
     print(f"[sentence_model] Loading flan-t5-large from:\n  {source}")
 
-    _tokenizer = T5Tokenizer.from_pretrained(source)
+    # `legacy=True` keeps the existing tokenization behavior and suppresses the
+    # Transformers warning about the default legacy behavior.
+    _tokenizer = T5Tokenizer.from_pretrained(source, legacy=True)
     _model = T5ForConditionalGeneration.from_pretrained(
         source,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,

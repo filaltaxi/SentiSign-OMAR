@@ -476,6 +476,7 @@ let camera          = null;
 let handsDetector   = null;
 let lastAudioBlob   = null;
 let lastFilename    = '';
+let activeTtsJobId  = null;
 
 const HOLD_FRAMES      = 10;
 const MIN_CONFIDENCE   = 0.60;
@@ -793,40 +794,99 @@ function renderBuffer() {
   });
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchJsonOrThrow(url, init) {
+  const res = await fetch(url, init);
+  const contentType = res.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? await res.json()
+    : { detail: await res.text() };
+
+  if (!res.ok) {
+    const msg = data && typeof data.detail === 'string'
+      ? data.detail
+      : JSON.stringify(data);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function setDownloadDisabled(text) {
+  downloadLink.href = '#';
+  downloadLink.removeAttribute('download');
+  downloadLink.textContent = text;
+  downloadLink.style.pointerEvents = 'none';
+  downloadLink.style.opacity = '0.65';
+}
+
+function setDownloadEnabled(url, filename) {
+  downloadLink.href = url;
+  downloadLink.download = filename;
+  downloadLink.textContent = `↓ Download ${filename}`;
+  downloadLink.style.pointerEvents = '';
+  downloadLink.style.opacity = '';
+}
+
+async function waitForTtsJob(statusUrl, jobId) {
+  const deadline = Date.now() + 5 * 60 * 1000; // 5 minutes
+  while (Date.now() < deadline) {
+    if (activeTtsJobId !== jobId) return null; // superseded by a newer request
+    const job = await fetchJsonOrThrow(statusUrl);
+    if (job.state === 'done') return job;
+    if (job.state === 'error') throw new Error(job.error || 'TTS failed');
+    await sleep(700);
+  }
+  throw new Error('Timed out waiting for audio');
+}
+
 // ── Generate & Speak ──────────────────────────────────────────────────────────
 async function generateAndSpeak() {
   if (wordBuffer.length === 0) return;
   speakBtn.disabled = true;
-  speakBtn.innerHTML = '<span class="spinner"></span>Generating...';
+  speakBtn.innerHTML = '<span class="spinner"></span>Generating sentence...';
 
   try {
-    const res = await fetch('/api/generate_and_speak', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({words: wordBuffer, emotion: currentEmotion})
+    const data = await fetchJsonOrThrow('/api/generate_and_speak_async', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words: wordBuffer, emotion: currentEmotion })
     });
 
-    if (!res.ok) throw new Error(await res.text());
-
-    const sentence = res.headers.get('X-Sentence') || '';
-    lastFilename   = res.headers.get('X-Filename')  || 'sentisign.wav';
-
-    const blob = await res.blob();
-    lastAudioBlob = blob;
-    const url  = URL.createObjectURL(blob);
+    const sentence = data.sentence || '';
+    const filename = data.filename || 'sentisign.wav';
+    const jobId    = data.job_id;
+    const statusUrl = data.status_url;
+    const audioUrl  = data.audio_url;
+    if (!jobId || !statusUrl || !audioUrl) throw new Error('Malformed response from server');
+    activeTtsJobId = jobId;
+    lastFilename = filename;
 
     sentenceEl.textContent = `"${sentence}"`;
     sentenceEl.classList.remove('empty');
 
-    audioPlayer.src = url;
-    audioPlayer.play();
-
-    downloadLink.href     = url;
-    downloadLink.download = lastFilename;
-    downloadLink.textContent = `↓ Download ${lastFilename}`;
-
     audioSection.style.display = 'flex';
-    showToast('Speech generated!', 'success');
+    audioPlayer.pause();
+    audioPlayer.removeAttribute('src');
+    audioPlayer.load();
+    setDownloadDisabled('Synthesizing audio...');
+
+    speakBtn.innerHTML = '<span class="spinner"></span>Synthesizing audio...';
+    await waitForTtsJob(statusUrl, jobId);
+    if (activeTtsJobId !== jobId) return; // superseded
+
+    const finalUrl = `${audioUrl}?t=${Date.now()}`;
+    audioPlayer.src = finalUrl;
+    const playPromise = audioPlayer.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => showToast('Audio ready — press play', 'success'));
+    }
+
+    setDownloadEnabled(finalUrl, filename);
+
+    showToast('Speech ready!', 'success');
 
   } catch(e) {
     showToast('Error: ' + e.message, 'error');

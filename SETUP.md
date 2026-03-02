@@ -8,19 +8,19 @@
 From the repo root:
 
 ```bash
-uv sync
-uv run python slm/download_model.py
-uv run python run_pipeline.py
+uv --preview-features extra-build-dependencies sync
+uv --preview-features extra-build-dependencies run python slm/download_model.py
+uv --preview-features extra-build-dependencies run python run_pipeline.py
 ```
 
 Web UI:
 ```bash
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv --preview-features extra-build-dependencies run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 If you want to run training/retraining tools (plots, etc.):
 ```bash
-uv sync --extra train
+uv --preview-features extra-build-dependencies sync --extra train
 ```
 
 ---

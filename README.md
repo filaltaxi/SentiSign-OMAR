@@ -91,8 +91,8 @@ Open `http://localhost:8000` in your browser. Wait for all models to load (loadi
 
 **With `uv`**
 ```bash
-uv run python run_pipeline.py
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv --preview-features extra-build-dependencies run python run_pipeline.py
+uv --preview-features extra-build-dependencies run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ---

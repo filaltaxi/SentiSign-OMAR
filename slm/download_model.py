@@ -23,7 +23,8 @@ def download():
     print(f"[download] Downloading {MODEL_NAME} (~780MB) ...")
     print("[download] This takes a few minutes on first run.\n")
 
-    tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME)
+    # Explicit `legacy=True` to keep current behavior and suppress the default-legacy warning.
+    tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME, legacy=True)
     model     = T5ForConditionalGeneration.from_pretrained(MODEL_NAME)
 
     tokenizer.save_pretrained(MODEL_DIR)

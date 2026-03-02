@@ -73,6 +73,11 @@ def words_to_sentence(words: list) -> str:
     return result
 
 
+# Backwards-compatible alias expected by `main.py`.
+def generate_sentence(words: list) -> str:
+    return words_to_sentence(words)
+
+
 # ── Quick test ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     tests = [

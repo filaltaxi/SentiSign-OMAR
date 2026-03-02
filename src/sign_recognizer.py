@@ -148,7 +148,12 @@ def _normalize_landmarks(landmarks):
 def _get_device():
     global _device
     if _device is None:
-        _device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.is_available():
+            _device = torch.device('cuda')
+        elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            _device = torch.device('mps')
+        else:
+            _device = torch.device('cpu')
         print(f'[sign_recognizer] Device: {_device}')
     return _device
 

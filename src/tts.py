@@ -14,6 +14,7 @@
 import os, sys, torch
 
 _SRC = os.path.dirname(__file__)
+_ROOT = os.path.dirname(_SRC)
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
@@ -27,8 +28,17 @@ def _get_device() -> str:
     if torch.cuda.is_available():
         print(f"[tts] CUDA: {torch.cuda.get_device_name(0)}")
         return "cuda"
+    # Apple Silicon GPU (Metal Performance Shaders).
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        print("[tts] MPS available — using Apple GPU.")
+        return "mps"
     print("[tts] No GPU — using CPU (slower).")
     return "cpu"
+
+
+def load_model():
+    """Load Chatterbox-TTS once and cache it for all subsequent calls."""
+    return _load()
 
 
 def _load():
@@ -43,8 +53,34 @@ def _load():
             "Fix: pip install chatterbox-tts"
         )
     device = _get_device()
-    print("[tts] Loading Chatterbox (~1GB download on first run) ...")
-    _model = ChatterboxTTS.from_pretrained(device=device)
+
+    # `chatterbox-tts` expects `perth.PerthImplicitWatermarker` to exist, but the
+    # optional backend can be missing (e.g., `pkg_resources`/setuptools not installed).
+    # Fall back to a no-op-ish dummy watermarker so TTS still works.
+    try:
+        import perth
+        if getattr(perth, "PerthImplicitWatermarker", None) is None:
+            perth.PerthImplicitWatermarker = perth.DummyWatermarker
+            print("[tts] perth watermark backend unavailable — using DummyWatermarker.")
+    except Exception:
+        pass
+
+    # Prefer local checkpoints (supports manual download to models/chatterbox/).
+    local_ckpt_dir = os.path.join(_ROOT, "models", "chatterbox")
+    required = [
+        "ve.safetensors",
+        "t3_cfg.safetensors",
+        "s3gen.safetensors",
+        "tokenizer.json",
+        "conds.pt",
+    ]
+    if all(os.path.exists(os.path.join(local_ckpt_dir, f)) for f in required):
+        print(f"[tts] Loading Chatterbox from local checkpoints: {local_ckpt_dir}")
+        _model = ChatterboxTTS.from_local(local_ckpt_dir, device=device)
+    else:
+        print("[tts] Loading Chatterbox (~1GB download on first run) ...")
+        _model = ChatterboxTTS.from_pretrained(device=device)
+
     print(f"[tts] Chatterbox ready. Sample rate: {_model.sr}Hz\n")
     return _model
 

@@ -11,14 +11,19 @@ import base64
 import pickle
 import tempfile
 import threading
+import uuid
 import numpy as np
 from pathlib import Path
 from io import BytesIO
 from datetime import datetime
 
+# Allow PyTorch MPS to fall back to CPU for unsupported ops.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 # Add src/ to path so existing modules are importable
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_ROOT, 'src'))
+sys.path.insert(0, os.path.join(_ROOT, 'slm', 'src'))
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
@@ -81,6 +86,10 @@ _retrain_status  = {'state': 'idle', 'message': ''}
 _retrain_lock    = threading.Lock()
 _models_ready    = False
 
+# Async TTS jobs (in-memory, best-effort for local dev)
+_tts_jobs      = {}          # job_id -> job dict (includes internal filepath)
+_tts_jobs_lock = threading.Lock()
+
 # Retrain config
 RETRAIN_HIDDEN   = [512, 256, 128]
 RETRAIN_DROPOUT  = 0.3
@@ -108,8 +117,43 @@ class LandmarkMLP(nn.Module):
 def get_device():
     global _device
     if _device is None:
-        _device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.is_available():
+            _device = torch.device('cuda')
+        elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            _device = torch.device('mps')
+        else:
+            _device = torch.device('cpu')
     return _device
+
+
+def _configure_torch_threads():
+    """Tune PyTorch thread counts for CPU-bound ops (override via env vars)."""
+    try:
+        default_threads = os.cpu_count() or 1
+        num_threads = int(os.environ.get('SENTISIGN_TORCH_THREADS', default_threads))
+        num_threads = max(1, num_threads)
+    except Exception:
+        num_threads = 1
+
+    # Set OMP threads for underlying CPU kernels unless user already configured it.
+    os.environ.setdefault('OMP_NUM_THREADS', str(num_threads))
+
+    # Interop threads: keep small to reduce overhead.
+    try:
+        default_interop = min(4, num_threads)
+        interop_threads = int(os.environ.get('SENTISIGN_TORCH_INTEROP_THREADS', default_interop))
+        interop_threads = max(1, interop_threads)
+    except Exception:
+        interop_threads = 1
+
+    try:
+        torch.set_num_threads(num_threads)
+    except Exception:
+        pass
+    try:
+        torch.set_num_interop_threads(interop_threads)
+    except Exception:
+        pass
 
 
 def load_mlp():
@@ -152,6 +196,7 @@ def load_emotion():
 @app.on_event('startup')
 async def startup():
     global _models_ready
+    _configure_torch_threads()
     load_mlp()
     load_emotion()
     _preload_slm_and_tts()
@@ -163,18 +208,15 @@ def _preload_slm_and_tts():
     """Load Flan-T5 and Chatterbox into memory at startup so first request is fast."""
     try:
         print('[API] Preloading sentence model...')
-        from generate_sentence import generate_sentence
-        generate_sentence(['HELP'])   # warm-up call loads and caches model
+        from sentence_model import load_model as load_sentence_model
+        load_sentence_model()
         print('[API] Sentence model ready.')
     except Exception as e:
         print(f'[API] Sentence model preload failed: {e}')
     try:
         print('[API] Preloading TTS model...')
-        from tts import speak_and_save
-        import tempfile, os
-        tmp = tempfile.mktemp(suffix='.wav')
-        speak_and_save('ready', 'neutral', tmp)
-        if os.path.exists(tmp): os.remove(tmp)
+        from tts import load_model as load_tts_model
+        load_tts_model()
         print('[API] TTS model ready.')
     except Exception as e:
         print(f'[API] TTS preload failed: {e}')
@@ -346,7 +388,7 @@ async def generate_and_speak(req: GenerateRequest):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename  = f'sentisign_{req.emotion}_{timestamp}.wav'
         filepath  = os.path.join(AUDIO_DIR, filename)
-        speak_and_save(sentence, req.emotion, filepath)
+        speak_and_save(sentence, req.emotion, filepath, also_play=False)
     except Exception as e:
         raise HTTPException(500, f'TTS failed: {e}')
 
@@ -363,6 +405,102 @@ async def generate_and_speak(req: GenerateRequest):
             'Content-Disposition': f'inline; filename="{filename}"',
         }
     )
+
+
+def _tts_job_public(job: dict) -> dict:
+    """Return a safe/public view of a job dict."""
+    return {
+        'job_id': job.get('job_id'),
+        'state': job.get('state'),
+        'created_at': job.get('created_at'),
+        'updated_at': job.get('updated_at'),
+        'sentence': job.get('sentence'),
+        'emotion': job.get('emotion'),
+        'filename': job.get('filename'),
+        'audio_url': job.get('audio_url'),
+        'error': job.get('error'),
+    }
+
+
+def _run_tts_job(job_id: str, sentence: str, emotion: str, filepath: str):
+    """Background job that renders TTS to disk and updates job state."""
+    now = datetime.now().isoformat()
+    with _tts_jobs_lock:
+        job = _tts_jobs.get(job_id)
+        if not job:
+            return
+        job['state'] = 'running'
+        job['updated_at'] = now
+
+    try:
+        from tts import speak_and_save
+        speak_and_save(sentence, emotion, filepath, also_play=False)
+        now = datetime.now().isoformat()
+        with _tts_jobs_lock:
+            job = _tts_jobs.get(job_id)
+            if job:
+                job['state'] = 'done'
+                job['updated_at'] = now
+    except Exception as e:
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass
+        now = datetime.now().isoformat()
+        with _tts_jobs_lock:
+            job = _tts_jobs.get(job_id)
+            if job:
+                job['state'] = 'error'
+                job['error'] = str(e)
+                job['updated_at'] = now
+
+
+@app.post('/api/generate_and_speak_async')
+async def generate_and_speak_async(req: GenerateRequest, background_tasks: BackgroundTasks):
+    """Generate sentence now, synthesise speech in the background, and return a job id."""
+    if not req.words:
+        raise HTTPException(400, 'No words provided')
+    try:
+        from generate_sentence import generate_sentence
+        sentence = generate_sentence(req.words)
+    except Exception as e:
+        raise HTTPException(500, f'Sentence generation failed: {e}')
+
+    job_id = uuid.uuid4().hex
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename  = f'sentisign_{req.emotion}_{timestamp}_{job_id[:8]}.wav'
+    filepath  = os.path.join(AUDIO_DIR, filename)
+    audio_url = f'/audio/{filename}'
+    status_url = f'/api/tts_jobs/{job_id}'
+
+    job = {
+        'job_id': job_id,
+        'state': 'queued',
+        'created_at': datetime.now().isoformat(),
+        'updated_at': datetime.now().isoformat(),
+        'sentence': sentence,
+        'emotion': req.emotion,
+        'filename': filename,
+        'audio_url': audio_url,
+        'error': None,
+        # internal-only
+        'filepath': filepath,
+    }
+    with _tts_jobs_lock:
+        _tts_jobs[job_id] = job
+
+    background_tasks.add_task(_run_tts_job, job_id, sentence, req.emotion, filepath)
+    return _tts_job_public(job) | {'status_url': status_url}
+
+
+@app.get('/api/tts_jobs/{job_id}')
+async def get_tts_job(job_id: str):
+    with _tts_jobs_lock:
+        job = _tts_jobs.get(job_id)
+        if not job:
+            raise HTTPException(404, 'Unknown job id')
+        return _tts_job_public(job)
 
 
 @app.get('/api/signs')
@@ -738,3 +876,4 @@ async def get_status():
 
 # ── Serve static files ────────────────────────────────────────────────────────
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
+app.mount('/audio', StaticFiles(directory=AUDIO_DIR), name='audio')
