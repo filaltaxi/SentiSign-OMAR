@@ -96,6 +96,11 @@ export const Communicate: React.FC = () => {
 
     const handleGenerateAndSpeak = async () => {
         if (wordBuffer.length === 0) return;
+        if (sessionActive) {
+            setSessionActive(false);
+            trackingRef.current.holdCounter = 0;
+            trackingRef.current.currentClass = null;
+        }
         setIsGenerating(true);
         try {
             const data = await generateSentence(wordBuffer, selectedEmotion);
