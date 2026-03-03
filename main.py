@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import base64
+import copy
 import pickle
 import tempfile
 import threading
@@ -52,7 +53,7 @@ LABEL_PATH   = os.path.join(MODEL_DIR, 'label_map.json')
 EMO_PATH     = os.path.join(_ROOT, 'models', 'emotion', 'resnet_emotion.pth')
 RAW_DIR      = os.path.join(_ROOT, 'data', 'landmarks', 'raw')
 REF_DIR      = os.path.join(_ROOT, 'data', 'landmarks', 'references')
-STATIC_DIR   = os.path.join(_ROOT, 'website', 'static')
+
 AUDIO_DIR    = os.path.join(_ROOT, 'website', 'audio')
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
@@ -89,6 +90,24 @@ _models_ready    = False
 # Async TTS jobs (in-memory, best-effort for local dev)
 _tts_jobs      = {}          # job_id -> job dict (includes internal filepath)
 _tts_jobs_lock = threading.Lock()
+
+# Startup progress (so the frontend can show accurate "backend loading" UI).
+_startup_lock = threading.Lock()
+_startup_thread_started = False
+_startup_status = {
+    'state': 'starting',  # starting | loading | ready | error
+    'message': 'Backend starting...',
+    'updated_at': datetime.now().isoformat(),
+    'core_ready': False,   # sign+emotion ready
+    'ready': False,        # all steps done
+    'steps': [
+        {'id': 'mlp', 'label': 'Sign model (landmark MLP)', 'state': 'pending', 'detail': None},
+        {'id': 'emotion', 'label': 'Emotion model', 'state': 'pending', 'detail': None},
+        {'id': 'sentence', 'label': 'Sentence model (flan-t5-large)', 'state': 'pending', 'detail': None},
+        {'id': 'tts', 'label': 'TTS model (Chatterbox)', 'state': 'pending', 'detail': None},
+        {'id': 'custom_signs', 'label': 'Custom sign mappings', 'state': 'pending', 'detail': None},
+    ],
+}
 
 # Retrain config
 RETRAIN_HIDDEN   = [512, 256, 128]
@@ -192,34 +211,124 @@ def load_emotion():
     return _emo_model, _face_cascade
 
 
+# ── Startup progress helpers ──────────────────────────────────────────────────
+def _startup_set_overall(state: str, message: str):
+    with _startup_lock:
+        _startup_status['state'] = state
+        _startup_status['message'] = message
+        _startup_status['updated_at'] = datetime.now().isoformat()
+
+
+def _startup_set_step(step_id: str, state: str, detail: str | None = None):
+    with _startup_lock:
+        for step in _startup_status.get('steps', []):
+            if step.get('id') == step_id:
+                step['state'] = state
+                step['detail'] = detail
+                break
+        _startup_status['updated_at'] = datetime.now().isoformat()
+
+
+def _startup_mark_core_ready():
+    global _models_ready
+    with _startup_lock:
+        _startup_status['core_ready'] = True
+        _startup_status['updated_at'] = datetime.now().isoformat()
+    _models_ready = True
+
+
+def _startup_mark_ready():
+    with _startup_lock:
+        _startup_status['ready'] = True
+        _startup_status['state'] = 'ready'
+        _startup_status['message'] = 'Backend ready.'
+        _startup_status['updated_at'] = datetime.now().isoformat()
+
+
+def _startup_snapshot() -> dict:
+    with _startup_lock:
+        snap = copy.deepcopy(_startup_status)
+    # Include retrain status in the same call (handy for UI).
+    with _retrain_lock:
+        snap['retrain'] = dict(_retrain_status)
+    return snap
+
+
+def _background_startup_load_all():
+    """
+    Load heavy models in a background thread so the API can respond to /api/status
+    while warming up.
+    """
+    global _startup_thread_started
+
+    try:
+        _startup_set_overall('loading', 'Loading sign model...')
+        _startup_set_step('mlp', 'loading')
+        try:
+            load_mlp()
+            _startup_set_step('mlp', 'done')
+            _startup_mark_core_ready()
+        except Exception as e:
+            _startup_set_step('mlp', 'error', str(e))
+            raise
+
+        _startup_set_overall('loading', 'Loading emotion model...')
+        _startup_set_step('emotion', 'loading')
+        try:
+            emo_model, _ = load_emotion()
+            if emo_model is None:
+                _startup_set_step('emotion', 'error', 'Emotion model failed to load.')
+            else:
+                _startup_set_step('emotion', 'done')
+        except Exception as e:
+            _startup_set_step('emotion', 'error', str(e))
+
+        _startup_set_overall('loading', 'Preloading sentence model...')
+        _startup_set_step('sentence', 'loading')
+        try:
+            from sentence_model import load_model as load_sentence_model
+            load_sentence_model()
+            _startup_set_step('sentence', 'done')
+        except Exception as e:
+            _startup_set_step('sentence', 'error', str(e))
+
+        _startup_set_overall('loading', 'Preloading TTS model...')
+        _startup_set_step('tts', 'loading')
+        try:
+            from tts import load_model as load_tts_model
+            load_tts_model()
+            _startup_set_step('tts', 'done')
+        except Exception as e:
+            _startup_set_step('tts', 'error', str(e))
+
+        _startup_set_overall('loading', 'Restoring custom signs...')
+        _startup_set_step('custom_signs', 'loading')
+        _restore_custom_signs()
+        _startup_set_step('custom_signs', 'done')
+
+        _startup_mark_ready()
+        print('[API] Startup warmup done.')
+    except Exception as e:
+        _startup_set_overall('error', f'Startup failed: {e}')
+    finally:
+        with _startup_lock:
+            _startup_thread_started = True
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 @app.on_event('startup')
 async def startup():
-    global _models_ready
     _configure_torch_threads()
-    load_mlp()
-    load_emotion()
-    _preload_slm_and_tts()
-    _restore_custom_signs()
-    _models_ready = True
-    print('[API] All models ready.')
-
-def _preload_slm_and_tts():
-    """Load Flan-T5 and Chatterbox into memory at startup so first request is fast."""
-    try:
-        print('[API] Preloading sentence model...')
-        from sentence_model import load_model as load_sentence_model
-        load_sentence_model()
-        print('[API] Sentence model ready.')
-    except Exception as e:
-        print(f'[API] Sentence model preload failed: {e}')
-    try:
-        print('[API] Preloading TTS model...')
-        from tts import load_model as load_tts_model
-        load_tts_model()
-        print('[API] TTS model ready.')
-    except Exception as e:
-        print(f'[API] TTS preload failed: {e}')
+    global _startup_thread_started
+    with _startup_lock:
+        # Avoid starting warmup twice in the same process (can happen in some reload modes).
+        if _startup_thread_started:
+            return
+        _startup_thread_started = True
+        _startup_status['state'] = 'starting'
+        _startup_status['message'] = 'Backend starting...'
+        _startup_status['updated_at'] = datetime.now().isoformat()
+    threading.Thread(target=_background_startup_load_all, daemon=True).start()
 
 def _restore_custom_signs():
     """Reload any custom signs from label_map.json into CLASS_TO_WORD on startup."""
@@ -272,23 +381,20 @@ class SignAddRequest(BaseModel):
     gif_frames: Optional[List[str]] = None   # base64 JPEG frames
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+FRONTEND_DIST = os.path.join(_ROOT, 'frontend', 'dist')
 
-@app.get('/')
-async def index():
-    return FileResponse(os.path.join(STATIC_DIR, 'index.html'))
+# Optional mount of built static assets if present
+if os.path.exists(FRONTEND_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, 'assets')), name="assets")
 
-@app.get('/contribute')
-async def contribute():
-    return FileResponse(os.path.join(STATIC_DIR, 'contribute.html'))
+# Audio and references mounting (keep existing)
+app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
+app.mount("/references", StaticFiles(directory=REF_DIR), name="references")
 
-@app.get('/signs')
-async def signs_page():
-    return FileResponse(os.path.join(STATIC_DIR, 'signs.html'))
-
-@app.get('/about')
-async def about():
-    return FileResponse(os.path.join(STATIC_DIR, 'about.html'))
+@app.get('/api/status')
+async def get_status():
+    """Backend startup + retrain status (used by frontend to show accurate loading UI)."""
+    return _startup_snapshot()
 
 
 @app.post('/api/recognise')
@@ -867,13 +973,19 @@ def _generate_placeholder_gif(word: str):
         print(f'[API] GIF generation failed: {e}')
 
 
-@app.get('/api/status')
-async def get_status():
-    if not _models_ready:
-        return {'state': 'loading', 'message': 'Models loading...'}
-    return _retrain_status
+# SPA Fallback for any client routes not caught by API.
+# Must be LAST so it doesn't shadow real API endpoints.
+@app.get('/{full_path:path}')
+async def spa_fallback(full_path: str):
+    if (
+        full_path.startswith('api/')
+        or full_path.startswith('audio/')
+        or full_path.startswith('references/')
+        or full_path.startswith('assets/')
+    ):
+        raise HTTPException(404, "Not Found")
 
-
-# ── Serve static files ────────────────────────────────────────────────────────
-app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
-app.mount('/audio', StaticFiles(directory=AUDIO_DIR), name='audio')
+    index_file = os.path.join(FRONTEND_DIST, 'index.html')
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    raise HTTPException(404, "Frontend not built. Run 'npm run build' in the frontend directory.")

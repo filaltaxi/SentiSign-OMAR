@@ -83,11 +83,19 @@ Takes under 2 minutes on GPU.
 python run_pipeline.py
 ```
 
-**Web interface**
+**Web interface (Development)**
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
+make backend
+make frontend
 ```
-Open `http://localhost:8000` in your browser. Wait for all models to load (loading screen fades automatically).
+Open `http://localhost:5173` in your browser.
+
+**Web interface (Production)**
+```bash
+cd frontend && npm run build
+cd .. && uvicorn main:app --host 0.0.0.0 --port 8000
+```
+Open `http://localhost:8000` in your browser.
 
 **With `uv`**
 ```bash
@@ -114,12 +122,14 @@ SentiSign-OMAR/
 │   ├── tts.py                      # Chatterbox TTS
 │   └── emotion_map.py              # Emotion → prosody parameters
 │
+├── frontend/
+│   ├── src/                        # Vite + React + TS App
+│   │   ├── components/             # Reusable UI components
+│   │   ├── pages/                  # Route views (Communicate, Signs, etc.)
+│   │   └── index.css               # Tailwind v4 configuration
+│   └── dist/                       # Production build output
+│
 ├── website/
-│   ├── static/
-│   │   ├── index.html              # Home — sign + emotion + TTS
-│   │   ├── signs.html              # Signs gallery
-│   │   ├── contribute.html         # Community sign contribution
-│   │   └── about.html              # About page
 │   └── audio/                      # Generated .wav files
 │
 ├── models/

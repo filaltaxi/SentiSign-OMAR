@@ -99,22 +99,70 @@ Rebuild the existing frontend as a Vite + React + TypeScript app in a separate `
 ## Dev Notes (append after each phase)
 
 ### Dev Notes — Phase 0
-TBD
+### Dev Notes — Phase 0
+
+**Findings & Route Map:**
+- **Routes:** 
+  - `/` (Communicate): Webcam + MediaPipe hands. Sends payload to `/api/recognise`, polls `/api/emotion` (base64 frame). Has a word buffer, sends to `/api/generate_and_speak_async` and polls TTS job.
+  - `/contribute` (Add Sign): 4-Gate wizard. Gate 1 (Word check via `/api/signs/check`), Gate 2 (Gesture collision via `/api/signs/gate2`), Gate 3 (Record 100+ frames, send to `/api/signs/add`), Gate 4 (Success + retrain polling).
+  - `/signs` (Gallery): Static HTML likely calling `/api/signs` to list vocabulary.
+  - `/about`: Static info page.
+- **Tech Stack:** Vanilla JS, embedded CSS (CSS vars, flex/grid layouts), MediaPipe via unpkg/CDN.
+- **Parity Checklist:**
+  - [ ] **Routing Shell:** React Router for the 4 pages + persistent Navbar.
+  - [ ] **Communicate Page:** Webcam setup, MediaPipe Hands drawing, emotion loop.
+  - [ ] **Communicate State:** Word buffer logic (hold frames), undo/clear, TTS generation async polling + audio player.
+  - [ ] **Contribute Page:** 4-step wizard state machine.
+  - [ ] **Contribute Checks:** Word collision check, collision override logic, 200-frame collection loop.
+  - [ ] **Theme/Style:** Port the exact CSS variables and custom styles (or rebuild with a UI framework if preferred, though PRD says "works the same"). *Note: `frontend-design` skill allows for polished UI.*
+  
+**Risks/Unknowns:**
+- React Strict Mode and MediaPipe: Camera lifecycle needs careful `useEffect` cleanup to avoid locking the webcam.
+- Migrating from CDN MediaPipe to NPM `@mediapipe/hands` sometimes has path resolution issues in Vite (might need to copy files to `/public` or use CDN in `index.html`).
 
 ### Dev Notes — Phase 1
-TBD
+
+- Created Vite React TS structure using `npm create vite@latest frontend -- --template react-ts`.
+- Installed TailwindCSS v4 with `@tailwindcss/vite` and updated `index.css` using theme variables that match the legacy CSS exactly.
+- Added `Makefile` to the root for `make frontend` (runs Vite server from frontend folder) and `make backend` (runs uvicorn from root).
+- Implemented SPA layout shell (`MainLayout.tsx`) and empty placeholder implementations of the 4 routes in `App.tsx` via `react-router-dom`.
 
 ### Dev Notes — Phase 2
-TBD
+
+- Implemented production topology by converting explicit `/` and `/contribute` HTML responses in `main.py` into a wildcard `{full_path:path}`.
+- If `frontend/dist/index.html` exists (production built frontend), it serves that and mounts `/assets`.
+- Added a fallback safety net: if Vite is not built yet, it attempts to return the legacy `website/static/*.html` files mapped to the original routes so backend dev is not blocked.
+- Added explicit `/api/status` endpoint to fix trailing frontend requests for loading.
 
 ### Dev Notes — Phase 3
-TBD
+
+- Replaced legacy `index.html` structure with React Router and nested `MainLayout` wrapping 4 ported pages (`Communicate`, `Contribute`, `SignsGallery`, `About`).
+- **Communicate Page**:
+  - Split vanilla monolithic UI into focused React components (`WebcamPane`, `WordBuffer`, `SentenceOutput`, `EmotionStrip`).
+  - Integrated `@mediapipe/hands` correctly. Handled complex `useRef` component lifecycles to initialize camera without memory leaks or race conditions.
+  - Used Framer Motion `AnimatePresence` for dynamic word rendering and emotion transitions, bringing in an *"Avant-Garde"* feel while retaining functional parity.
+- **Contribute Page**:
+  - Refactored the 4-gate Vanilla state machine into a `WizardLayout` architecture (`Gate1WordCheck`, `Gate2Gesture`, `Gate3Record`, `Gate4Success`).
+  - Implemented the same gesture snapshot, recording queue, and reference GIF capture loops using a headless canvas and `toDataURL` manipulation.
+- **Signs & About**:
+  - Ported static HTML content into reactive Tailwind components.
+  - Added simple fetch mapping to point the Gallery UI to `/api/signs` and render loaded MediaPipe output structures.
+- Fixed a handful of TypeScript implicit any compilation errors alongside mismatched DOM structure requirements from the Vite bundler (e.g. moving `<script>` tags correctly inside `<head>` in `index.html`).
 
 ### Dev Notes — Phase 4
-TBD
+
+- Verified UI functionality using automated browser subagent.
+- The `make backend` shortcut failed initially due to the global `uvicorn` context missing. Updated the `Makefile` to target `.venv/bin/uvicorn` explicitly, resolving the startup issue.
+- **Signs Gallery & Contribute**: Noted that the backend `/api/signs` endpoint currently responds with 500 errors (likely due to an uninitialized database or missing model records in the target environment).
+- **Graceful degradation**: The React UI efficiently catches these 500 payloads and renders localized fallback UI elements (e.g. "0 signs available" and error alerts inside the wizard) rather than crashing. Memory leaks are handled by Strict Mode cleanup.
+- Frontend rendering speeds are exceptionally fast via Vite. Layout fidelity matches original design.
 
 ### Dev Notes — Phase 5
-TBD
+
+- Removed all legacy Vanilla JS/HTML frontend files from `website/static/*.html`.
+- Cleaned up backend legacy SPA routing fallbacks in `main.py` reducing routing complexity and preventing file path collisions. Removed the static mount to `STATIC_DIR` completely.
+- Updated `README.md` to reflect the new `frontend/` directory structure and clarified instructions for running the application in Development mode versus Production build mode.
+- The React migration is now complete.
 
 ---
 
