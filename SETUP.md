@@ -1,5 +1,5 @@
 # SentiSign — Setup & Run Guide
-## Stack: flan-t5-large + Chatterbox/ElevenLabs TTS | Python 3.10 | Windows
+## Stack: Ollama qwen3.5:0.8b + Chatterbox/ElevenLabs TTS | Python 3.10 | Windows
 
 ---
 
@@ -9,7 +9,6 @@ From the repo root:
 
 ```bash
 uv --preview-features extra-build-dependencies sync
-uv --preview-features extra-build-dependencies run python slm/download_model.py
 uv --preview-features extra-build-dependencies run python run_pipeline.py
 ```
 
@@ -38,9 +37,9 @@ SentiSign-OMAR/
 │   └── play_audio.py        ← sounddevice playback, .wav saving
 │
 └── slm/                     ← sentence generation module
-    ├── download_model.py    ← downloads flan-t5-large (run once)
+    ├── download_model.py    ← optional flan-t5-large fallback download
     └── src/
-        ├── sentence_model.py    ← flan-t5-large wrapper
+        ├── sentence_model.py    ← Ollama / Hugging Face sentence backend
         └── generate_sentence.py ← word buffer → sentence
 ```
 
@@ -86,7 +85,21 @@ Set `ELEVENLABS_API_KEY` in `.env`.
 
 ---
 
-## Step 3 — Download flan-t5-large (~3.1GB weights, one time only)
+## Step 3 — Install the Ollama sentence model
+
+Make sure the Ollama server is available, then pull the local model:
+
+```bash
+ollama pull qwen3.5:0.8b
+```
+
+Create `.env` if you want the explicit local config:
+
+```bash
+copy .env.example .env
+```
+
+Optional legacy fallback:
 
 ```bat
 python slm\download_model.py
@@ -94,6 +107,7 @@ python slm\download_model.py
 
 > Chatterbox model (~1GB) auto-downloads on first `run_pipeline.py` run.
 > ElevenLabs does not download local weights (cloud API).
+> `slm\download_model.py` is only needed when using `SENTISIGN_SENTENCE_PROVIDER=hf`.
 
 ---
 
@@ -142,7 +156,8 @@ To fine-tune: edit values in `src/emotion_map.py`
 | `No module named 'sentencepiece'` | `pip install sentencepiece` |
 | `(.venv)` not showing | Run `.venv\Scripts\activate.bat` |
 | sounddevice plays nothing | `python -c "import sounddevice; print(sounddevice.query_devices())"` |
-| flan-t5-large missing | `python slm\download_model.py` |
+| Ollama unreachable | Start `ollama serve` and verify `ollama list` shows `qwen3.5:0.8b` |
+| flan-t5-large missing in HF mode | `python slm\download_model.py` |
 | CUDA out of memory | Both models fall back to CPU automatically |
 
 ---

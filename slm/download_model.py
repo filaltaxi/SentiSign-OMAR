@@ -1,7 +1,8 @@
 # slm/download_model.py
 # ─────────────────────────────────────────────────────────────────────────────
 # Downloads google/flan-t5-large to slm/models/flan-t5-large/
-# Run ONCE before using the pipeline.
+# This is optional now and only needed when using:
+#   SENTISIGN_SENTENCE_PROVIDER=hf
 #
 # Usage:
 #   python slm/download_model.py

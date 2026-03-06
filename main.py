@@ -138,7 +138,7 @@ _startup_status = {
         {'id': 'mlp', 'label': 'Sign model (landmark MLP)', 'state': 'pending', 'detail': None},
         {'id': 'temporal', 'label': 'Temporal sign model (optional)', 'state': 'pending', 'detail': None},
         {'id': 'emotion', 'label': 'Emotion model', 'state': 'pending', 'detail': None},
-        {'id': 'sentence', 'label': 'Sentence model (flan-t5-large)', 'state': 'pending', 'detail': None},
+        {'id': 'sentence', 'label': 'Sentence model', 'state': 'pending', 'detail': None},
         {'id': 'tts', 'label': 'TTS provider (Chatterbox/ElevenLabs)', 'state': 'pending', 'detail': None},
         {'id': 'custom_signs', 'label': 'Custom sign mappings', 'state': 'pending', 'detail': None},
     ],
@@ -1086,6 +1086,22 @@ def _startup_set_step(step_id: str, state: str, detail: str | None = None):
         _startup_status['updated_at'] = datetime.now().isoformat()
 
 
+def _refresh_sentence_startup_label():
+    try:
+        from sentence_model import get_backend_label
+
+        label = f"Sentence model ({get_backend_label()})"
+    except Exception:
+        label = "Sentence model"
+
+    with _startup_lock:
+        for step in _startup_status['steps']:
+            if step['id'] == 'sentence':
+                step['label'] = label
+                break
+        _startup_status['updated_at'] = datetime.now().isoformat()
+
+
 def _startup_mark_core_ready():
     global _models_ready
     with _startup_lock:
@@ -1190,6 +1206,7 @@ def _background_startup_load_all():
 @app.on_event('startup')
 async def startup():
     _configure_torch_threads()
+    _refresh_sentence_startup_label()
     global _startup_thread_started
     with _startup_lock:
         # Avoid starting warmup twice in the same process (can happen in some reload modes).

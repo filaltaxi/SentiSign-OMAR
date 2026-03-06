@@ -14,7 +14,7 @@ SentiSign translates ASL hand signs and facial emotion into natural, emotionally
 | 2 | MediaPipe extracts hand landmarks (126 features, both hands) |
 | 3 | MLP classifier maps landmarks to vocabulary words |
 | 4 | ResNet CNN detects facial emotion simultaneously |
-| 5 | Flan-T5-Large generates a grammatical sentence from word buffer |
+| 5 | Ollama `qwen3.5:0.8b` generates a grammatical sentence from word buffer |
 | 6 | Chatterbox (local) or ElevenLabs (cloud) synthesises speech |
 
 ---
@@ -66,7 +66,19 @@ uv run python run_pipeline.py
 
 This repo includes the non-SLM model files under `models/` (landmark + emotion).
 
-The sentence model (`flan-t5-large/`) is not committed (too large) and is downloaded into `slm/models/` on first run (or via `slm/download_model.py`).
+Sentence generation now defaults to a local Ollama model. Install `qwen3.5:0.8b` first:
+
+```bash
+ollama pull qwen3.5:0.8b
+```
+
+Then configure:
+
+```bash
+cp .env.example .env
+```
+
+The legacy Hugging Face fallback (`flan-t5-large`) is still available via `SENTISIGN_SENTENCE_PROVIDER=hf`.
 
 **5 — Collect training data (first time only)**
 ```bash
@@ -211,7 +223,7 @@ SentiSign-OMAR/
 - **Validation accuracy:** 96.04%
 
 ### Sentence Generation
-- **Model:** Flan-T5-Large (zero-shot, no fine-tuning)
+- **Model:** Ollama `qwen3.5:0.8b` by default, `flan-t5-large` fallback
 - **Input:** word buffer (e.g. `["I", "NEED", "HELP"]`)
 - **Output:** grammatical sentence (`"I need help."`)
 

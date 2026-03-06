@@ -12,7 +12,7 @@
 #       │               continuous webcam → emotion counts
 #       │               → winner or user resolves tie
 #       └──────────┬───────────────┘
-#                  ▼  flan-t5-large
+#                  ▼  sentence model
 #       grammatically correct English sentence
 #                  ▼  Chatterbox-TTS (exaggeration + cfg_weight)
 #              🔊  emotion-expressive audio
@@ -36,6 +36,7 @@ for p in [_SRC, _SLM_SRC]:
 
 from emotion_map       import print_emotion_table
 from generate_sentence import words_to_sentence
+from sentence_model    import get_backend_label
 from tts               import get_output_extension, resolve_provider, speak_and_save
 from sign_recognizer   import capture_words_and_emotion
 
@@ -46,7 +47,7 @@ from sign_recognizer   import capture_words_and_emotion
 def get_inputs() -> tuple:
     print("\n" + "═" * 64)
     print("  SentiSign  |  Sign Language → Emotion-Aware Speech")
-    print("  Models: flan-t5-large  +  Chatterbox-TTS  +  ResNet Emotion")
+    print(f"  Models: {get_backend_label()}  +  Chatterbox-TTS  +  ResNet Emotion")
     print("═" * 64)
     print_emotion_table()
 
