@@ -172,22 +172,31 @@ def load_model(provider: str | None = None):
     return _load_hf()
 
 
+def _ollama_options(model: str, max_length: int) -> dict:
+    options = {
+        "temperature": 0,
+        "repeat_penalty": 1.1,
+        "num_predict": max_length,
+    }
+    if "ministral" in model.lower() or "mistral" in model.lower():
+        options["top_p"] = 1.0
+    else:
+        options["top_p"] = 0.8
+    return options
+
+
 def _generate_with_ollama(prompt: str, max_length: int, system_prompt: str | None = None) -> str:
     load_model("ollama")
+    model = resolve_ollama_model()
     payload = {
-        "model": resolve_ollama_model(),
+        "model": model,
         "prompt": prompt,
         "system": system_prompt or "",
         "stream": False,
         "think": False,
         "stop": ["\n", "Signs:", "English:"],
         "keep_alive": os.environ.get("SENTISIGN_OLLAMA_KEEP_ALIVE", OLLAMA_KEEP_ALIVE),
-        "options": {
-            "temperature": 0,
-            "top_p": 0.8,
-            "repeat_penalty": 1.1,
-            "num_predict": max_length,
-        },
+        "options": _ollama_options(model, max_length),
     }
     response = _ollama_request("POST", "/api/generate", payload)
     text = (response.get("response") or "").strip()

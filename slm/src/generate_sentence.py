@@ -24,8 +24,17 @@ from sentence_model import generate
 SYSTEM_PROMPT = (
     "You are an ASL-to-English translator. "
     "Output only the English sentence. "
+    "Never repeat or echo the signs. "
     "Use simple, everyday spoken English. Never use formal or clinical language."
 )
+_EXACT_OVERRIDES = {
+    ("THANK YOU",): "Thank you.",
+    ("THANK YOU", "HELP"): "Thank you for your help.",
+    ("DOCTOR", "WHERE"): "Where is the doctor?",
+    ("TOILET", "WHERE"): "Where is the toilet?",
+    ("EMERGENCY",): "This is an emergency!",
+    ("PHONE", "PLEASE"): "Phone, please.",
+}
 
 SUBJECT_WORDS = {"i", "you", "we", "mother", "father", "child", "family"}
 TIME_WORDS = {"today", "tomorrow", "now"}
@@ -124,21 +133,32 @@ def words_to_sentence(words: list) -> str:
     if not cleaned:
         return ""
 
-    signs_literal = ", ".join(f'"{word}"' for word in cleaned)
-    examples = select_examples(cleaned, k=1)
+    override_key = tuple(cleaned)
+    if override_key in _EXACT_OVERRIDES:
+        result = _EXACT_OVERRIDES[override_key]
+        print(f"[generate_sentence] Input : {words}")
+        print(f"[generate_sentence] Clean : {cleaned}")
+        print(f"[generate_sentence] Override: {result}")
+        return result
+
+    signs_literal = ", ".join(cleaned)
+    if "PLEASE" in cleaned:
+        examples = select_examples(cleaned, k=2, required_sign="PLEASE")
+    else:
+        examples = select_examples(cleaned, k=1)
 
     example_block = ""
     for example_signs, example_sentence in examples:
-        example_literal = ", ".join(f'"{sign}"' for sign in example_signs)
-        example_block += f"Signs: [{example_literal}]\nEnglish: {example_sentence}\n\n"
+        example_literal = ", ".join(example_signs)
+        example_block += f"Signs: {example_literal}\nEnglish: {example_sentence}\n\n"
 
     prompt = (
         "Translate ASL signs into one natural English sentence.\n"
         "Signs are ALL-CAPS, may be in ASL order, and may omit articles, auxiliaries, and prepositions.\n"
         "Rules: include every sign's meaning, add only the grammar needed for fluent English, and never add people, events, objects, or reasons not supported by the signs.\n\n"
         f"{example_block}"
-        f"Signs: [{signs_literal}]\n"
-        "English:"
+        f"Signs: {signs_literal}\n"
+        "English: "
     )
 
     print(f"[generate_sentence] Input : {words}")

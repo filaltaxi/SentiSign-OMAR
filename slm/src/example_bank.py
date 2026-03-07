@@ -7,6 +7,7 @@ EXAMPLES: list[tuple[list[str], str]] = [
     (["WATER", "PLEASE"], "Water, please."),
     (["FOOD", "PLEASE"], "Food, please."),
     (["MEDICINE", "PLEASE"], "Medicine, please."),
+    (["HELP", "PLEASE"], "Help, please."),
     (["I", "SICK", "DOCTOR", "NEED"], "I am sick and need a doctor."),
     (["I", "PAIN"], "I am in pain."),
     (["EMERGENCY"], "This is an emergency!"),
@@ -43,12 +44,21 @@ def _score(example_signs: list[str], input_signs: list[str]) -> float:
     return weighted_jaccard + exact_bonus
 
 
-def select_examples(input_signs: list[str], k: int = 1) -> list[tuple[list[str], str]]:
+def select_examples(
+    input_signs: list[str],
+    k: int = 1,
+    required_sign: str | None = None,
+) -> list[tuple[list[str], str]]:
     scored: list[tuple[float, list[str], str]] = []
     for example_signs, sentence in EXAMPLES:
+        if required_sign and required_sign not in example_signs:
+            continue
         score = _score(example_signs, input_signs)
         if score > 0:
             scored.append((score, example_signs, sentence))
+
+    if required_sign and not scored:
+        return select_examples(input_signs, k=k, required_sign=None)
 
     scored.sort(key=lambda item: item[0], reverse=True)
     return [(signs, sentence) for _, signs, sentence in scored[:k]]
