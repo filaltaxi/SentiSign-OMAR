@@ -1231,6 +1231,18 @@ async def startup():
         _startup_status['updated_at'] = datetime.now().isoformat()
     threading.Thread(target=_background_startup_load_all, daemon=True).start()
 
+
+@app.on_event('shutdown')
+async def shutdown():
+    try:
+        from sentence_model import resolve_provider, unload_ollama_model
+
+        if resolve_provider() == 'ollama':
+            unload_ollama_model()
+    except Exception as e:
+        print(f'[API] Sentence model unload skipped: {e}')
+
+
 def _restore_custom_signs():
     """Reload any custom signs from label_map.json into CLASS_TO_WORD on startup."""
     try:

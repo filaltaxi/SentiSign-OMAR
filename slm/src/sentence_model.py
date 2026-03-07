@@ -114,6 +114,22 @@ def _ollama_request(method: str, path: str, payload: dict | None = None) -> dict
         ) from e
 
 
+def unload_ollama_model(model: str | None = None) -> bool:
+    target = (model or resolve_ollama_model()).strip()
+    if not target:
+        return False
+
+    payload = {
+        "model": target,
+        "prompt": "",
+        "stream": False,
+        "keep_alive": 0,
+    }
+    _ollama_request("POST", "/api/generate", payload)
+    print(f"[sentence_model] Requested unload for Ollama model: {target}")
+    return True
+
+
 def _load_ollama():
     global _ollama_ready
     if _ollama_ready:
