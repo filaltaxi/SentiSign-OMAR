@@ -10,10 +10,10 @@ import { useModel } from '../model/ModelContext';
 
 const HOLD_FRAMES_MLP = 10;
 const MIN_CONFIDENCE_MLP = 0.60;
-const HOLD_FRAMES_LSTM = 2;
-const MIN_CONFIDENCE_LSTM = 0.35;
+const MIN_CONFIDENCE_LSTM = 0.60;
+const LSTM_DUPLICATE_GUARD_MS = 1000;
 const DISPLAY_CONFIDENCE_MLP = MIN_CONFIDENCE_MLP;
-const DISPLAY_CONFIDENCE_LSTM = 0.60;
+const DISPLAY_CONFIDENCE_LSTM = MIN_CONFIDENCE_LSTM;
 
 export const Communicate: React.FC = () => {
     const { model, sessionResetNonce } = useModel();
@@ -32,10 +32,11 @@ export const Communicate: React.FC = () => {
     const canGenerate = wordBuffer.length > 0;
     const isGenerating = generationStage !== 'idle';
 
-    const trackingRef = useRef<{ holdCounter: number; currentClass: string | null; lastWord: string }>({
+    const trackingRef = useRef<{ holdCounter: number; currentClass: string | null; lastWord: string; lastCommitAt: number }>({
         holdCounter: 0,
         currentClass: null,
         lastWord: '',
+        lastCommitAt: 0,
     });
 
     const generationAbortRef = useRef<AbortController | null>(null);
@@ -55,7 +56,6 @@ export const Communicate: React.FC = () => {
 
     const handleSignDetected = useCallback(
         (word: string | null, cls: string | null, conf: number) => {
-            const holdFrames = activeModel === 'lstm' ? HOLD_FRAMES_LSTM : HOLD_FRAMES_MLP;
             const minConfidence = activeModel === 'lstm' ? MIN_CONFIDENCE_LSTM : MIN_CONFIDENCE_MLP;
             const displayConfidence = activeModel === 'lstm' ? DISPLAY_CONFIDENCE_LSTM : DISPLAY_CONFIDENCE_MLP;
             const shouldDisplay = conf >= displayConfidence;
@@ -73,6 +73,27 @@ export const Communicate: React.FC = () => {
                 return;
             }
 
+            if (activeModel === 'lstm') {
+                if (!word || conf < minConfidence) {
+                    return;
+                }
+
+                const now = Date.now();
+                if (
+                    trackingRef.current.lastWord === word &&
+                    now - trackingRef.current.lastCommitAt < LSTM_DUPLICATE_GUARD_MS
+                ) {
+                    return;
+                }
+
+                setWordBuffer((prev) => [...prev, word]);
+                trackingRef.current.lastWord = word;
+                trackingRef.current.lastCommitAt = now;
+                trackingRef.current.currentClass = cls;
+                trackingRef.current.holdCounter = 0;
+                return;
+            }
+
             if (cls !== trackingRef.current.currentClass) {
                 trackingRef.current.currentClass = cls;
                 trackingRef.current.holdCounter = 0;
@@ -86,12 +107,13 @@ export const Communicate: React.FC = () => {
             }
 
             if (
-                trackingRef.current.holdCounter >= holdFrames &&
+                trackingRef.current.holdCounter >= HOLD_FRAMES_MLP &&
                 word &&
                 word !== trackingRef.current.lastWord
             ) {
                 setWordBuffer((prev) => [...prev, word]);
                 trackingRef.current.lastWord = word;
+                trackingRef.current.lastCommitAt = Date.now();
                 trackingRef.current.holdCounter = 0;
             }
         },
@@ -125,6 +147,7 @@ export const Communicate: React.FC = () => {
         trackingRef.current.holdCounter = 0;
         trackingRef.current.currentClass = null;
         trackingRef.current.lastWord = '';
+        trackingRef.current.lastCommitAt = 0;
     }, [cancelGeneration]);
 
     useEffect(() => {
@@ -233,6 +256,8 @@ export const Communicate: React.FC = () => {
                                     if (next) {
                                         trackingRef.current.holdCounter = 0;
                                         trackingRef.current.currentClass = null;
+                                        trackingRef.current.lastWord = '';
+                                        trackingRef.current.lastCommitAt = 0;
                                     }
                                     return next;
                                 });

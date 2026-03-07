@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EmotionType } from './EmotionStrip';
 import type { SignModel } from '../model/ModelContext';
 import { extractTemporalFeatures, hasTemporalSignal } from '../lib/handFeatures';
@@ -27,7 +27,22 @@ declare global {
 
 const RECOGNISE_DELAY = 80;
 const LSTM_N_FRAMES = 60;
-const LSTM_STRIDE = 5;
+const LSTM_FEATURE_DIM = 126;
+const LSTM_MIN_SIGN_FRAMES = 10;
+const LSTM_NO_SIGNAL_FRAMES = 10;
+const LSTM_COOLDOWN_MS = 1000;
+
+type TemporalCaptureState = 'idle' | 'collecting' | 'cooldown';
+
+function padTemporalSequence(sequence: number[][]): number[][] {
+    if (sequence.length >= LSTM_N_FRAMES) {
+        return sequence.slice(-LSTM_N_FRAMES);
+    }
+
+    const padLength = LSTM_N_FRAMES - sequence.length;
+    const padding = Array.from({ length: padLength }, () => new Array(LSTM_FEATURE_DIM).fill(0));
+    return [...sequence, ...padding];
+}
 
 export function WebcamPane({
     model,
@@ -40,6 +55,7 @@ export function WebcamPane({
 }: WebcamPaneProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
 
     // Keep latest callback props without forcing MediaPipe to re-subscribe.
     const onEmotionDetectedRef = useRef(onEmotionDetected);
@@ -53,6 +69,11 @@ export function WebcamPane({
         onSignDetectedRef.current = onSignDetected;
     }, [onSignDetected]);
 
+    const setCooldownRemaining = useCallback((nextMs: number) => {
+        const normalized = Math.max(0, nextMs);
+        setCooldownRemainingMs((prev) => (Math.abs(prev - normalized) < 35 ? prev : normalized));
+    }, []);
+
     // Ref to hold the MediaPipe instances
     const mpRef = useRef<{
         camera: any | null;
@@ -60,7 +81,10 @@ export function WebcamPane({
         emotionInterval: ReturnType<typeof setInterval> | null;
         lastRecogniseTime: number;
         frameBuffer: number[][];
-        frameCounter: number;
+        temporalState: TemporalCaptureState;
+        noSignalFrames: number;
+        cooldownUntil: number;
+        temporalRequestInFlight: boolean;
         inputCanvas: HTMLCanvasElement | null;
         inputCtx: CanvasRenderingContext2D | null;
     }>({
@@ -69,7 +93,10 @@ export function WebcamPane({
         emotionInterval: null,
         lastRecogniseTime: 0,
         frameBuffer: [],
-        frameCounter: 0,
+        temporalState: 'idle',
+        noSignalFrames: 0,
+        cooldownUntil: 0,
+        temporalRequestInFlight: false,
         inputCanvas: null,
         inputCtx: null,
     });
@@ -151,33 +178,94 @@ export function WebcamPane({
             return;
         }
 
-        mpRef.current.frameBuffer.push(features);
-        if (mpRef.current.frameBuffer.length > LSTM_N_FRAMES) {
-            mpRef.current.frameBuffer.shift();
-        }
-        mpRef.current.frameCounter += 1;
+        const runTemporalRecognition = async (sequence: number[][]) => {
+            if (mpRef.current.temporalRequestInFlight) return;
+            mpRef.current.temporalRequestInFlight = true;
 
-        if (mpRef.current.frameBuffer.length < LSTM_N_FRAMES) {
-            onSignDetectedRef.current(null, null, 0);
+            try {
+                const res = await fetch('/api/temporal/recognise', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sequence })
+                });
+                const data = await res.json();
+                const cls = typeof data.class === 'string' ? data.class : null;
+                const word = typeof data.word === 'string' ? data.word : null;
+                const conf = Number.isFinite(Number(data.confidence)) ? Number(data.confidence) : 0;
+                onSignDetectedRef.current(word, cls, conf);
+            } catch (err) {
+                console.error('Temporal recognise API failed', err);
+            } finally {
+                mpRef.current.temporalRequestInFlight = false;
+            }
+        };
+
+        const temporal = mpRef.current;
+        const now = Date.now();
+
+        if (temporal.temporalState === 'cooldown') {
+            setCooldownRemaining(Math.max(0, temporal.cooldownUntil - now));
+            temporal.noSignalFrames = hasSignal ? 0 : temporal.noSignalFrames + 1;
+
+            if (now >= temporal.cooldownUntil && temporal.noSignalFrames >= LSTM_NO_SIGNAL_FRAMES) {
+                temporal.temporalState = 'idle';
+                temporal.noSignalFrames = 0;
+                setCooldownRemaining(0);
+                onSignDetectedRef.current(null, null, 0);
+            }
             return;
         }
-        if (mpRef.current.frameCounter % LSTM_STRIDE !== 0) return;
 
-        try {
-            const res = await fetch('/api/temporal/recognise', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sequence: mpRef.current.frameBuffer })
-            });
-            const data = await res.json();
-            const cls = typeof data.class === 'string' ? data.class : null;
-            const word = typeof data.word === 'string' ? data.word : null;
-            const conf = Number.isFinite(Number(data.confidence)) ? Number(data.confidence) : 0;
-            onSignDetectedRef.current(word, cls, conf);
-        } catch (err) {
-            console.error('Temporal recognise API failed', err);
+        setCooldownRemaining(0);
+
+        if (hasSignal) {
+            temporal.noSignalFrames = 0;
+            if (temporal.temporalState !== 'collecting') {
+                temporal.temporalState = 'collecting';
+                temporal.frameBuffer = [];
+                onSignDetectedRef.current(null, null, 0);
+            }
+
+            temporal.frameBuffer.push(features);
+
+            if (temporal.frameBuffer.length >= LSTM_N_FRAMES) {
+                const sequence = padTemporalSequence(temporal.frameBuffer);
+                temporal.frameBuffer = [];
+                temporal.temporalState = 'cooldown';
+                temporal.cooldownUntil = now + LSTM_COOLDOWN_MS;
+                temporal.noSignalFrames = 0;
+                setCooldownRemaining(LSTM_COOLDOWN_MS);
+                await runTemporalRecognition(sequence);
+            }
+            return;
         }
-    }, [model]);
+
+        temporal.noSignalFrames += 1;
+
+        if (temporal.temporalState === 'collecting' && temporal.noSignalFrames >= LSTM_NO_SIGNAL_FRAMES) {
+            const completedSign = temporal.frameBuffer;
+            temporal.frameBuffer = [];
+
+            if (completedSign.length >= LSTM_MIN_SIGN_FRAMES) {
+                const sequence = padTemporalSequence(completedSign);
+                temporal.temporalState = 'cooldown';
+                temporal.cooldownUntil = now + LSTM_COOLDOWN_MS;
+                temporal.noSignalFrames = 1;
+                setCooldownRemaining(LSTM_COOLDOWN_MS);
+                await runTemporalRecognition(sequence);
+            } else {
+                temporal.temporalState = 'idle';
+                temporal.noSignalFrames = 0;
+                setCooldownRemaining(0);
+                onSignDetectedRef.current(null, null, 0);
+            }
+            return;
+        }
+
+        if (temporal.temporalState === 'idle' && temporal.noSignalFrames >= LSTM_NO_SIGNAL_FRAMES) {
+            onSignDetectedRef.current(null, null, 0);
+        }
+    }, [model, setCooldownRemaining]);
 
     // Lifecycle for Camera / Session
     useEffect(() => {
@@ -188,7 +276,11 @@ export function WebcamPane({
 
             mpRef.current.lastRecogniseTime = 0;
             mpRef.current.frameBuffer = [];
-            mpRef.current.frameCounter = 0;
+            mpRef.current.temporalState = 'idle';
+            mpRef.current.noSignalFrames = 0;
+            mpRef.current.cooldownUntil = 0;
+            mpRef.current.temporalRequestInFlight = false;
+            setCooldownRemaining(0);
             mpRef.current.inputCanvas = null;
             mpRef.current.inputCtx = null;
 
@@ -241,7 +333,11 @@ export function WebcamPane({
                 stopSession({ resetEmotion: false });
                 mpRef.current.lastRecogniseTime = 0;
                 mpRef.current.frameBuffer = [];
-                mpRef.current.frameCounter = 0;
+                mpRef.current.temporalState = 'idle';
+                mpRef.current.noSignalFrames = 0;
+                mpRef.current.cooldownUntil = 0;
+                mpRef.current.temporalRequestInFlight = false;
+                setCooldownRemaining(0);
 
                 const handsDetector = new window.Hands({
                     locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`
@@ -347,7 +443,9 @@ export function WebcamPane({
             ignore = true;
             stopSession();
         };
-    }, [isActive, onHandResults]);
+    }, [isActive, onHandResults, setCooldownRemaining]);
+
+    const cooldownSeconds = cooldownRemainingMs > 0 ? (cooldownRemainingMs / 1000).toFixed(1) : null;
 
     return (
         <div className={`relative overflow-hidden rounded-2xl border bg-[#eef5ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${isActive ? 'camera-live-shell border-[#9fc9ff] shadow-[0_18px_36px_rgba(0,127,255,0.22)]' : 'border-[#c9defd]'}`}>
@@ -381,6 +479,12 @@ export function WebcamPane({
                 >
                     {isActive ? currentEmotion : '—'}
                 </div>
+
+                {model === 'lstm' && cooldownSeconds !== null && (
+                    <div className="absolute bottom-3 right-3 rounded-lg border border-[#ffd1ba] bg-white/94 px-3 py-1.5 text-[0.72rem] font-bold uppercase tracking-[0.14em] text-[#c85a21] shadow-[0_8px_18px_rgba(15,34,68,0.12)]">
+                        Relax {cooldownSeconds}s
+                    </div>
+                )}
             </div>
 
             {/* Sign Confidence Strip */}
