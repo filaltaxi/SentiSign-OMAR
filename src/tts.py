@@ -186,6 +186,11 @@ def _get_chatterbox_device() -> str:
 
 
 def _load_chatterbox():
+    global _model, _loaded_engine
+
+    if _model is not None and _loaded_engine == "chatterbox":
+        return _model
+
     try:
         from chatterbox.tts import ChatterboxTTS
     except ImportError as e:
@@ -345,7 +350,7 @@ def _speak_cartesia(text: str, emotion: str, play: bool) -> bytes:
 
 
 def _speak_chatterbox(text: str, emotion: str, play: bool):
-    model = _load_chatterbox()
+    model = _load_backend()
     params = get_params(emotion)
     key = emotion.strip().lower()
     if key not in _CHATTERBOX_EXAGGERATION:
@@ -401,7 +406,7 @@ def speak_and_save(
     audio = speak(text, emotion=emotion, play=False)
 
     if engine == "chatterbox":
-        model = _load_chatterbox()
+        model = _load_backend()
         save_wav(audio, path, sample_rate=model.sr)
         if also_play:
             play_audio(audio, sample_rate=model.sr)

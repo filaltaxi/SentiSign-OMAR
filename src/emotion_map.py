@@ -28,17 +28,17 @@ EMOTION_PARAMS = {
     },
     "fear": {
         "experimental_emotions": ["fear:high"],
-        "generation_emotion": "fear",
+        "generation_emotion": "scared",
         "description": "Tense, uneasy, hesitant",
     },
     "disgust": {
         "experimental_emotions": ["disgust:high"],
-        "generation_emotion": "disgust",
+        "generation_emotion": "disgusted",
         "description": "Cold, flat, deliberate",
     },
     "surprise": {
         "experimental_emotions": ["surprise:high"],
-        "generation_emotion": "surprise",
+        "generation_emotion": "surprised",
         "description": "Sharp, lifted, expressive",
     },
 }
