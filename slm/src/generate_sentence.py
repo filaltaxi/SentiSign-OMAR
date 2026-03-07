@@ -23,7 +23,8 @@ from sentence_model import generate
 
 SYSTEM_PROMPT = (
     "You are an ASL-to-English translator. "
-    "Output only the English sentence. No explanation, no alternatives."
+    "Output only the English sentence. "
+    "Use simple, everyday spoken English. Never use formal or clinical language."
 )
 
 SUBJECT_WORDS = {"i", "you", "we", "mother", "father", "child", "family"}
