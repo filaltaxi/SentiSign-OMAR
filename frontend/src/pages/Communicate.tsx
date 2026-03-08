@@ -11,7 +11,9 @@ import { useModel } from '../model/ModelContext';
 const HOLD_FRAMES_MLP = 10;
 const MIN_CONFIDENCE_MLP = 0.60;
 const MIN_CONFIDENCE_LSTM = 0.60;
-const LSTM_STABLE_TICKS = 3;
+const LSTM_STABLE_TICKS = 2;
+const LSTM_FAST_COMMIT_CONFIDENCE = 0.78;
+const LSTM_FAST_COMMIT_MARGIN = 0.18;
 const LSTM_DUPLICATE_GUARD_MS = 1000;
 const DISPLAY_CONFIDENCE_MLP = MIN_CONFIDENCE_MLP;
 const DISPLAY_CONFIDENCE_LSTM = MIN_CONFIDENCE_LSTM;
@@ -71,7 +73,7 @@ export const Communicate: React.FC = () => {
     }, []);
 
     const handleSignDetected = useCallback(
-        (word: string | null, cls: string | null, conf: number) => {
+        (word: string | null, cls: string | null, conf: number, meta?: { margin?: number }) => {
             const minConfidence = activeModel === 'lstm' ? MIN_CONFIDENCE_LSTM : MIN_CONFIDENCE_MLP;
             const displayConfidence = activeModel === 'lstm' ? DISPLAY_CONFIDENCE_LSTM : DISPLAY_CONFIDENCE_MLP;
             const shouldDisplay = conf >= displayConfidence;
@@ -91,6 +93,7 @@ export const Communicate: React.FC = () => {
             }
 
             if (activeModel === 'lstm') {
+                const margin = Number.isFinite(meta?.margin) ? Number(meta?.margin) : 0;
                 if (!cls || !word || conf < minConfidence) {
                     trackingRef.current.currentClass = null;
                     trackingRef.current.holdCounter = 0;
@@ -99,6 +102,18 @@ export const Communicate: React.FC = () => {
                 }
 
                 if (cls !== trackingRef.current.currentClass) {
+                    const isFreshClass = cls !== trackingRef.current.lastCommittedClass;
+                    if (isFreshClass && conf >= LSTM_FAST_COMMIT_CONFIDENCE && margin >= LSTM_FAST_COMMIT_MARGIN) {
+                        commitDetectedWord(word);
+                        trackingRef.current.currentClass = cls;
+                        trackingRef.current.lastWord = word;
+                        trackingRef.current.lastCommittedClass = cls;
+                        trackingRef.current.lastCommitAt = Date.now();
+                        trackingRef.current.holdCounter = 0;
+                        trackingRef.current.repeatArmed = false;
+                        return;
+                    }
+
                     if (trackingRef.current.lastCommittedClass && cls !== trackingRef.current.lastCommittedClass) {
                         trackingRef.current.repeatArmed = true;
                     }

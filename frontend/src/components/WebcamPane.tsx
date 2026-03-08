@@ -8,7 +8,12 @@ interface WebcamPaneProps {
     isActive: boolean;
     commitResetNonce: number;
     onEmotionDetected: (emotion: EmotionType) => void;
-    onSignDetected: (word: string | null, cls: string | null, confidence: number) => void;
+    onSignDetected: (
+        word: string | null,
+        cls: string | null,
+        confidence: number,
+        meta?: { margin?: number }
+    ) => void;
     currentEmotion: EmotionType;
     wordLabel: string;
     confidence: number;
@@ -243,7 +248,10 @@ export function WebcamPane({
                 const cls = typeof data.class === 'string' ? data.class : null;
                 const word = typeof data.word === 'string' ? data.word : null;
                 const conf = Number.isFinite(Number(data.confidence)) ? Number(data.confidence) : 0;
-                onSignDetectedRef.current(word, cls, conf);
+                const top5 = Array.isArray(data.top5) ? data.top5 : [];
+                const top1 = Number.isFinite(Number(top5[0]?.[1])) ? Number(top5[0]?.[1]) : conf;
+                const top2 = Number.isFinite(Number(top5[1]?.[1])) ? Number(top5[1]?.[1]) : 0;
+                onSignDetectedRef.current(word, cls, conf, { margin: Math.max(0, top1 - top2) });
             } catch (err) {
                 console.error('Temporal recognise API failed', err);
             } finally {
