@@ -1009,7 +1009,7 @@ export const Communicate: React.FC = () => {
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
             className="ss-main-grid"
             style={{
                 height: 'calc(100dvh - var(--app-nav-h, 0px))',
@@ -1023,9 +1023,9 @@ export const Communicate: React.FC = () => {
             <section style={{ display: 'flex', flexDirection: 'column', gap: '10px', minHeight: 0, height: '100%', overflow: 'hidden' }}>
                 <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.92, y: 30 }}
-                        animate={{ opacity: cameraReady ? 1 : 0, scale: cameraReady ? 1 : 0.92, y: cameraReady ? 0 : 30 }}
-                        transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+                        initial={{ opacity: 0, scale: 0.985 }}
+                        animate={{ opacity: cameraReady ? 1 : 0, scale: cameraReady ? 1 : 0.985 }}
+                        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                         style={{
                             height: '100%',
                             borderRadius: 22,
@@ -1108,9 +1108,9 @@ export const Communicate: React.FC = () => {
                 </div>
 
                 <motion.div
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: cameraReady ? 1 : 0, y: cameraReady ? 0 : 12 }}
-                    transition={{ duration: 0.5, delay: 0.4 }}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: cameraReady ? 1 : 0, y: cameraReady ? 0 : 10 }}
+                    transition={{ delay: 0.35, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                     className="ss-word-buffer-shell"
                     style={{ flexShrink: 0 }}
                 >
@@ -1118,13 +1118,14 @@ export const Communicate: React.FC = () => {
                 </motion.div>
             </section>
 
-            <motion.aside
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: cameraReady ? 1 : 0, x: cameraReady ? 0 : 30 }}
-                transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                style={{ display: 'flex', flexDirection: 'column', gap: '10px', minHeight: 0, height: '100%', overflow: 'hidden' }}
-            >
-                <div className="ss-panel-lit ss-card-pad" style={{ flexShrink: 0, marginTop: 'auto' }}>
+            <aside style={{ display: 'flex', flexDirection: 'column', gap: '10px', minHeight: 0, height: '100%', overflow: 'hidden' }}>
+                <motion.div
+                    className="ss-panel-lit ss-card-pad"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: cameraReady ? 1 : 0, y: cameraReady ? 0 : 10 }}
+                    transition={{ delay: 0.15, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ flexShrink: 0, marginTop: 'auto' }}
+                >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.7rem' }}>
                         <div>
                             <h2
@@ -1258,9 +1259,15 @@ export const Communicate: React.FC = () => {
                             </motion.button>
                         ))}
                     </div>
-                </div>
+                </motion.div>
 
-                <div className="ss-panel ss-card-pad" style={{ flexShrink: 0 }}>
+                <motion.div
+                    className="ss-panel ss-card-pad"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: cameraReady ? 1 : 0, y: cameraReady ? 0 : 10 }}
+                    transition={{ delay: 0.25, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ flexShrink: 0 }}
+                >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
                         <span
                             style={{
@@ -1351,9 +1358,15 @@ export const Communicate: React.FC = () => {
                             );
                         })}
                     </div>
-                </div>
+                </motion.div>
 
-                <div className="ss-panel-lit ss-card-pad" style={{ flexShrink: 0 }}>
+                <motion.div
+                    className="ss-panel-lit ss-card-pad"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: cameraReady ? 1 : 0, y: cameraReady ? 0 : 10 }}
+                    transition={{ delay: 0.42, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ flexShrink: 0 }}
+                >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.55rem' }}>
                         <span
                             style={{
@@ -1408,11 +1421,14 @@ export const Communicate: React.FC = () => {
                         onPlaybackChange={setIsAudioPlaying}
                         compact
                     />
-                </div>
+                </motion.div>
 
                 <motion.button
                     type="button"
                     className="ss-generate-btn"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: cameraReady ? 1 : 0, y: cameraReady ? 0 : 10 }}
+                    transition={{ delay: 0.5, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                     onClick={isGenerating ? cancelGeneration : handleGenerateAndSpeak}
                     disabled={!isGenerating && !canGenerate}
                     whileHover={
@@ -1492,8 +1508,11 @@ export const Communicate: React.FC = () => {
                     )}
                 </motion.button>
 
-                <div
+                <motion.div
                     className="ss-active-row"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: cameraReady ? 1 : 0, y: cameraReady ? 0 : 10 }}
+                    transition={{ delay: 0.58, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                     style={{
                         marginTop: 'auto',
                         display: 'flex',
@@ -1570,8 +1589,8 @@ export const Communicate: React.FC = () => {
                     >
                         reconfigure
                     </button>
-                </div>
-            </motion.aside>
+                </motion.div>
+            </aside>
         </motion.div>
     );
 };
