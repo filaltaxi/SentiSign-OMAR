@@ -54,10 +54,9 @@ const getMostFrequentEmotion = (counts: EmotionCounts): EmotionType => {
 const GLOBAL_STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-@keyframes sentisign-pulse-ring {
-    0%   { box-shadow: 0 0 0 0 rgba(51,153,255,0.55), 0 0 0 0 rgba(51,153,255,0.25); }
-    70%  { box-shadow: 0 0 0 14px rgba(51,153,255,0), 0 0 0 28px rgba(51,153,255,0); }
-    100% { box-shadow: 0 0 0 0 rgba(51,153,255,0), 0 0 0 0 rgba(51,153,255,0); }
+@keyframes sentisign-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
 }
 
 @keyframes sentisign-glow-shift {
@@ -85,12 +84,12 @@ const GLOBAL_STYLES = `
     50%     { opacity: 0.2; }
 }
 
-.sentisign-pulse-ring  { animation: sentisign-pulse-ring 2s ease-out infinite; }
 .sentisign-glow-shift  { animation: sentisign-glow-shift 3s ease-in-out infinite; }
 .sentisign-orbit       { animation: sentisign-orbit 8s linear infinite; }
 .sentisign-orbit2      { animation: sentisign-orbit2 6s linear infinite; }
 .sentisign-float       { animation: sentisign-float 4s ease-in-out infinite; }
 .sentisign-dot-blink   { animation: sentisign-dot-blink 1.1s ease-in-out infinite; }
+.sentisign-spin        { animation: sentisign-spin 0.8s linear infinite; }
 
 .ss-slider {
     -webkit-appearance: none;
@@ -902,111 +901,112 @@ export const Communicate: React.FC = () => {
             }}
         >
             <section style={{ display: 'flex', flexDirection: 'column', gap: '10px', minHeight: 0, height: '100%', overflow: 'hidden' }}>
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.92, y: 30 }}
-                    animate={{ opacity: cameraReady ? 1 : 0, scale: cameraReady ? 1 : 0.92, y: cameraReady ? 0 : 30 }}
-                    transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
-                    style={{
-                        flex: 1,
-                        minHeight: 0,
-                        borderRadius: 22,
-                        overflow: 'hidden',
-                        position: 'relative',
-                        border: sessionActive ? '1px solid rgba(51,153,255,0.55)' : '1px solid rgba(51,153,255,0.2)',
-                        boxShadow: sessionActive
-                            ? '0 0 0 1px rgba(51,153,255,0.12), 0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(51,153,255,0.15)'
-                            : '0 20px 60px rgba(0,0,0,0.6)',
-                        transition: 'border-color 0.4s, box-shadow 0.4s',
-                    }}
-                    className={sessionActive ? 'sentisign-pulse-ring' : ''}
-                >
-                    <div
+                <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.92, y: 30 }}
+                        animate={{ opacity: cameraReady ? 1 : 0, scale: cameraReady ? 1 : 0.92, y: cameraReady ? 0 : 30 }}
+                        transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
                         style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            zIndex: 20,
-                            padding: '0.85rem 1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            background: 'linear-gradient(180deg, rgba(4,12,30,0.42) 0%, rgba(4,12,30,0.14) 52%, transparent 100%)',
+                            height: '100%',
+                            borderRadius: 22,
+                            overflow: 'hidden',
+                            position: 'relative',
+                            zIndex: 1,
+                            border: sessionActive ? '1px solid rgba(51,153,255,0.55)' : '1px solid rgba(51,153,255,0.2)',
+                            boxShadow: sessionActive
+                                ? '0 0 0 1px rgba(51,153,255,0.12), 0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(51,153,255,0.15)'
+                                : '0 20px 60px rgba(0,0,0,0.6)',
+                            transition: 'border-color 0.4s, box-shadow 0.4s',
                         }}
                     >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                            <div
-                                className={sessionActive ? 'sentisign-dot-blink' : ''}
-                                style={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: '50%',
-                                    background: sessionActive ? '#3399ff' : 'rgba(100,140,200,0.4)',
-                                    boxShadow: sessionActive ? '0 0 10px #3399ff' : 'none',
-                                }}
-                            />
-                            <span
-                                style={{
-                                    fontFamily: "'JetBrains Mono', monospace",
-                                    fontSize: '0.68rem',
-                                    fontWeight: 500,
-                                    letterSpacing: '0.14em',
-                                    color: sessionActive ? 'rgba(51,153,255,0.9)' : 'rgba(100,140,200,0.5)',
-                                    textTransform: 'uppercase',
-                                }}
-                            >
-                                {sessionActive ? 'LIVE DETECTION' : 'STANDBY'}
-                            </span>
-                        </div>
-
-                        <AnimatePresence>
-                            {sessionActive && confidence > 0 && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.8 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.8 }}
+                        <div
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                zIndex: 20,
+                                padding: '0.85rem 1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                background: 'linear-gradient(180deg, rgba(4,12,30,0.42) 0%, rgba(4,12,30,0.14) 52%, transparent 100%)',
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <div
+                                    className={sessionActive ? 'sentisign-dot-blink' : ''}
                                     style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem',
-                                        background: 'rgba(4,12,30,0.75)',
-                                        border: '1px solid rgba(51,153,255,0.25)',
-                                        borderRadius: 8,
-                                        padding: '4px 10px',
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: '50%',
+                                        background: sessionActive ? '#3399ff' : 'rgba(100,140,200,0.4)',
+                                        boxShadow: sessionActive ? '0 0 10px #3399ff' : 'none',
+                                    }}
+                                />
+                                <span
+                                    style={{
+                                        fontFamily: "'JetBrains Mono', monospace",
+                                        fontSize: '0.68rem',
+                                        fontWeight: 500,
+                                        letterSpacing: '0.14em',
+                                        color: sessionActive ? 'rgba(51,153,255,0.9)' : 'rgba(100,140,200,0.5)',
+                                        textTransform: 'uppercase',
                                     }}
                                 >
-                                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', color: 'rgba(180,210,255,0.6)' }}>
-                                        CONF
-                                    </span>
-                                    <span
+                                    {sessionActive ? 'LIVE DETECTION' : 'STANDBY'}
+                                </span>
+                            </div>
+
+                            <AnimatePresence>
+                                {sessionActive && confidence > 0 && (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.8 }}
                                         style={{
-                                            fontFamily: "'JetBrains Mono', monospace",
-                                            fontSize: '0.82rem',
-                                            fontWeight: 700,
-                                            color: confPct >= 80 ? '#44d9a0' : confPct >= 60 ? '#3399ff' : '#ffb347',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            background: 'rgba(4,12,30,0.75)',
+                                            border: '1px solid rgba(51,153,255,0.25)',
+                                            borderRadius: 8,
+                                            padding: '4px 10px',
                                         }}
                                     >
-                                        {confPct}%
-                                    </span>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
+                                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', color: 'rgba(180,210,255,0.6)' }}>
+                                            CONF
+                                        </span>
+                                        <span
+                                            style={{
+                                                fontFamily: "'JetBrains Mono', monospace",
+                                                fontSize: '0.82rem',
+                                                fontWeight: 700,
+                                                color: confPct >= 80 ? '#44d9a0' : confPct >= 60 ? '#3399ff' : '#ffb347',
+                                            }}
+                                        >
+                                            {confPct}%
+                                        </span>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
 
-                    <div style={{ width: '100%', height: '100%', background: '#020810' }}>
-                        <WebcamPane
-                            model={activeModel}
-                            isActive={sessionActive}
-                            commitResetNonce={commitResetNonce}
-                            onEmotionDetected={handleEmotionDetected}
-                            onSignDetected={handleSignDetected}
-                            currentEmotion={detectedEmotion}
-                            wordLabel={sessionActive ? signLabel : 'No sign detected'}
-                            confidence={sessionActive ? confidence : 0}
-                        />
-                    </div>
+                        <div style={{ width: '100%', height: '100%', background: '#020810' }}>
+                            <WebcamPane
+                                model={activeModel}
+                                isActive={sessionActive}
+                                commitResetNonce={commitResetNonce}
+                                onEmotionDetected={handleEmotionDetected}
+                                onSignDetected={handleSignDetected}
+                                currentEmotion={detectedEmotion}
+                                wordLabel={sessionActive ? signLabel : 'No sign detected'}
+                                confidence={sessionActive ? confidence : 0}
+                            />
+                        </div>
 
-                </motion.div>
+                    </motion.div>
+                </div>
 
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
@@ -1363,7 +1363,7 @@ export const Communicate: React.FC = () => {
                                     border: '2px solid rgba(255,120,110,0.3)',
                                     borderTopColor: '#ff7a6a',
                                     display: 'inline-block',
-                                    animation: 'sentisign-pulse-ring 0.7s linear infinite',
+                                    animation: 'sentisign-spin 0.8s linear infinite',
                                 }}
                             />
                             Cancel
