@@ -599,11 +599,14 @@ export function ContributeLSTM() {
     const historyTail = trainStatus.diagnostics?.history_tail ?? [];
 
     return (
-        <div className="h-[calc(100dvh-var(--app-nav-h))] overflow-y-auto">
+        <div
+            className="h-[calc(100dvh-var(--app-nav-h))] overflow-y-auto"
+            style={{ background: 'linear-gradient(135deg, #040c1e 0%, #060f24 52%, #03091a 100%)' }}
+        >
             <div className="mx-auto min-h-full max-w-[1140px] px-5 py-10 md:px-10">
                 <header className="mb-6">
                     <h1 className="font-heading text-[clamp(2rem,4vw,3rem)] font-extrabold leading-[1.08] tracking-tight text-text">
-                        Contribute <span className="text-[#c85a21]">Temporal</span> Signs
+                        Contribute <span className="text-[var(--color-amber)]">Temporal</span> Signs
                     </h1>
                     <p className="mt-2 max-w-[760px] text-[0.95rem] text-muted">
                         Record exactly {N_REPS} reps per word, each rep with {N_FRAMES} normalized landmark frames. This dataset feeds LSTM retraining.
@@ -612,7 +615,7 @@ export function ContributeLSTM() {
 
                 <section className="grid gap-6 lg:grid-cols-[1.12fr_0.88fr]">
                     <div className="space-y-6">
-                        <article className="rounded-3xl border border-border-color bg-white p-5 shadow-[0_14px_30px_rgba(15,34,68,0.08)]">
+                        <article className="rounded-3xl border border-border-color bg-surface p-5 shadow-[0_20px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl">
                             <div className="flex items-center justify-between gap-3">
                                 <h2 className="text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-muted">Planned words</h2>
                                 <button
@@ -623,7 +626,7 @@ export function ContributeLSTM() {
                                         selectWord(nextPlannedWord, entry?.reps_collected ?? 0);
                                     }}
                                     disabled={!nextPlannedWord}
-                                    className="rounded-xl border border-[#c8ddff] bg-[#f2f8ff] px-3 py-1.5 text-[0.72rem] font-bold uppercase tracking-[0.12em] text-brand disabled:cursor-not-allowed disabled:opacity-45"
+                                    className="rounded-xl border border-[rgba(51,153,255,0.22)] bg-[rgba(51,153,255,0.08)] px-3 py-1.5 text-[0.72rem] font-bold uppercase tracking-[0.12em] text-brand disabled:cursor-not-allowed disabled:opacity-45"
                                 >
                                     Next planned word
                                 </button>
@@ -634,8 +637,8 @@ export function ContributeLSTM() {
                             ) : (
                                 <div className="mt-4 grid gap-4">
                                     {planned.map((category) => (
-                                        <article key={category.name} className="rounded-2xl border border-border-color bg-[#fbfdff] p-4">
-                                            <div className="text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-muted">
+                                        <article key={category.name} className="rounded-2xl border border-[rgba(51,153,255,0.1)] bg-[rgba(51,153,255,0.03)] p-4">
+                                            <div className="text-[0.8rem] font-extrabold uppercase tracking-[0.14em] text-[rgba(255,179,71,0.7)]">
                                                 {category.name.replaceAll('_', ' ')}
                                             </div>
                                             <div className="mt-3 flex flex-wrap gap-2">
@@ -643,6 +646,7 @@ export function ContributeLSTM() {
                                                     const entry = statusByWord.get(word);
                                                     const isSelected = selectedWord === word;
                                                     const trained = entry?.is_trained ?? false;
+                                                    const hasProgress = Boolean((entry?.reps_collected ?? 0) > 0);
                                                     return (
                                                         <button
                                                             key={word}
@@ -650,13 +654,18 @@ export function ContributeLSTM() {
                                                             onClick={() => selectWord(word, entry?.reps_collected ?? 0)}
                                                             title={statusText(entry)}
                                                             className={`rounded-full border px-3 py-1 text-[0.76rem] font-bold transition-colors ${isSelected
-                                                                ? 'border-brand bg-[#edf5ff] text-brand'
+                                                                ? 'border-brand bg-[rgba(51,153,255,0.16)] text-brand shadow-[0_0_0_1px_rgba(51,153,255,0.08),0_0_18px_rgba(51,153,255,0.14)]'
                                                                 : trained
-                                                                    ? 'border-[#9fc9ff] bg-[#edf5ff] text-brand'
-                                                                    : 'border-border-color bg-white text-text hover:border-[#bad6ff]'
+                                                                    ? 'border-[rgba(68,217,160,0.32)] bg-[rgba(68,217,160,0.08)] text-[var(--color-green)]'
+                                                                    : hasProgress
+                                                                        ? 'border-[rgba(51,153,255,0.24)] bg-[rgba(51,153,255,0.08)] text-[rgba(160,205,255,0.82)]'
+                                                                        : 'border-border-color bg-[rgba(255,255,255,0.03)] text-text hover:border-[rgba(51,153,255,0.28)]'
                                                                 }`}
                                                         >
-                                                            {word.replaceAll('_', ' ')}
+                                                            <span className="inline-flex items-center gap-1.5">
+                                                                {trained && <span className="text-[0.68rem]">✓</span>}
+                                                                {word.replaceAll('_', ' ')}
+                                                            </span>
                                                         </button>
                                                     );
                                                 })}
@@ -667,26 +676,26 @@ export function ContributeLSTM() {
                             )}
                         </article>
 
-                        <article className="rounded-3xl border border-border-color bg-white p-5 shadow-[0_14px_30px_rgba(15,34,68,0.08)]">
+                        <article className="rounded-3xl border border-border-color bg-surface p-5 shadow-[0_20px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl">
                             <h2 className="text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-muted">Custom word check</h2>
                             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                                 <input
                                     value={customWord}
                                     onChange={(event) => setCustomWord(event.target.value)}
                                     placeholder="Enter a word (e.g. more)"
-                                    className="h-11 flex-1 rounded-xl border border-border-color bg-white px-3 text-[0.9rem] font-semibold text-text outline-none transition-colors focus:border-brand"
+                                    className="h-11 flex-1 rounded-xl border border-[rgba(51,153,255,0.2)] bg-[rgba(8,16,36,0.82)] px-3 text-[0.9rem] font-semibold text-text outline-none transition-[border-color,box-shadow] placeholder:text-[rgba(100,140,200,0.45)] focus:border-[rgba(51,153,255,0.5)] focus:shadow-[0_0_0_3px_rgba(51,153,255,0.12)]"
                                 />
                                 <button
                                     type="button"
                                     onClick={checkWord}
-                                    className="h-11 rounded-xl bg-gradient-to-r from-brand to-brand-end px-4 text-[0.85rem] font-bold text-white"
+                                    className="h-11 rounded-xl bg-gradient-to-r from-brand to-brand-end px-4 text-[0.85rem] font-bold text-white shadow-[0_12px_28px_rgba(51,153,255,0.26)]"
                                 >
                                     Check word
                                 </button>
                             </div>
 
                             {checkResult && (
-                                <div className="mt-4 rounded-2xl border border-border-color bg-[#f9fbff] p-4 text-[0.88rem] text-text">
+                                <div className="mt-4 rounded-2xl border border-[rgba(51,153,255,0.12)] bg-[rgba(51,153,255,0.05)] p-4 text-[0.88rem] text-text">
                                     <div className="font-bold">{checkResult.word.replaceAll('_', ' ')}</div>
                                     <div className="mt-1 text-muted">Trained: {checkResult.exists_trained ? 'Yes' : 'No'}</div>
                                     <div className="text-muted">Dataset reps: {checkResult.reps_collected}/{checkResult.reps_target}</div>
@@ -694,7 +703,7 @@ export function ContributeLSTM() {
                                     <button
                                         type="button"
                                         onClick={() => selectWord(checkResult.word, checkResult.reps_collected)}
-                                        className="mt-3 rounded-xl border border-[#c8ddff] bg-[#f2f8ff] px-3 py-2 text-[0.76rem] font-bold uppercase tracking-[0.12em] text-brand"
+                                        className="mt-3 rounded-xl border border-[rgba(51,153,255,0.22)] bg-[rgba(51,153,255,0.08)] px-3 py-2 text-[0.76rem] font-bold uppercase tracking-[0.12em] text-brand"
                                     >
                                         Use this word
                                     </button>
@@ -704,15 +713,24 @@ export function ContributeLSTM() {
                     </div>
 
                     <div className="space-y-6">
-                        <article className="rounded-3xl border border-border-color bg-white p-5 shadow-[0_14px_30px_rgba(15,34,68,0.08)]">
+                        <article className="rounded-3xl border border-border-color bg-surface p-5 shadow-[0_20px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl">
                             <div className="flex items-center justify-between gap-3">
                                 <h2 className="text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-muted">Recording</h2>
-                                <div className="rounded-full border border-[#d2e4ff] bg-[#f3f8ff] px-3 py-1 text-[0.7rem] font-bold uppercase tracking-[0.14em] text-muted">
+                                <div
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[0.7rem] font-bold uppercase tracking-[0.14em] ${
+                                        repState === 'recording'
+                                            ? 'border-[rgba(255,80,60,0.28)] bg-[rgba(255,80,60,0.09)] text-[rgba(255,140,120,0.92)]'
+                                            : repState === 'ready'
+                                                ? 'border-[rgba(68,217,160,0.25)] bg-[rgba(68,217,160,0.08)] text-[rgba(68,217,160,0.88)]'
+                                                : 'border-[rgba(51,153,255,0.18)] bg-[rgba(51,153,255,0.08)] text-muted'
+                                    }`}
+                                >
+                                    {repState === 'recording' && <span className="h-2 w-2 rounded-full bg-[rgba(255,120,100,0.95)] shadow-[0_0_10px_rgba(255,80,60,0.8)] animate-pulse" />}
                                     {repState}
                                 </div>
                             </div>
 
-                            <div className="mt-3 rounded-xl border border-border-color bg-[#f8fbff] p-3 text-[0.84rem] text-muted">
+                            <div className="mt-3 rounded-xl border border-[rgba(51,153,255,0.12)] bg-[rgba(51,153,255,0.05)] p-3 text-[0.84rem] text-muted">
                                 <div className="font-semibold text-text">
                                     Word: {selectedWord ? selectedWord.replaceAll('_', ' ') : 'None selected'}
                                 </div>
@@ -723,7 +741,7 @@ export function ContributeLSTM() {
                             <div className="relative mt-4 overflow-hidden rounded-2xl border border-border-color bg-black aspect-4/3">
                                 <video ref={videoRef} autoPlay muted playsInline className="h-full w-full scale-x-[-1] object-cover" />
                                 <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-                                <div className="absolute left-3 top-3 rounded-full border border-[#d2e4ff] bg-white/95 px-3 py-1 text-[0.66rem] font-bold uppercase tracking-[0.13em] text-muted">
+                                <div className="absolute left-3 top-3 rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(8,16,36,0.82)] px-3 py-1 text-[0.66rem] font-bold uppercase tracking-[0.13em] text-[rgba(200,220,255,0.72)] backdrop-blur">
                                     {queueActive ? 'Auto cycle on' : 'Auto cycle off'}
                                 </div>
                                 {trainingInFlight && (
@@ -745,12 +763,12 @@ export function ContributeLSTM() {
                                 )}
                             </div>
 
-                            <div className="mt-4 rounded-xl border border-border-color bg-[#f9fbff] p-3">
+                            <div className="mt-4 rounded-xl border border-[rgba(51,153,255,0.12)] bg-[rgba(51,153,255,0.05)] p-3">
                                 <div className="flex items-center justify-between text-[0.78rem] font-semibold">
                                     <span className="text-muted">Rep progress</span>
                                     <span className="text-text">{repsCollected}/{N_REPS}</span>
                                 </div>
-                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#d8e8ff]">
+                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(51,153,255,0.12)]">
                                     <div
                                         className="h-full rounded-full bg-gradient-to-r from-brand to-brand-end transition-all duration-300"
                                         style={{ width: `${progressPct}%` }}
@@ -761,9 +779,9 @@ export function ContributeLSTM() {
                                     <span className="text-muted">Current rep frames</span>
                                     <span className="text-text">{recordedFrames}/{N_FRAMES}</span>
                                 </div>
-                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e4edf9]">
+                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(51,153,255,0.1)]">
                                     <div
-                                        className="h-full rounded-full bg-[#7baeff] transition-all duration-100"
+                                        className="h-full rounded-full bg-[rgba(51,153,255,0.6)] transition-all duration-100"
                                         style={{ width: `${repFramePct}%` }}
                                     />
                                 </div>
@@ -782,27 +800,27 @@ export function ContributeLSTM() {
                                     type="button"
                                     onClick={pauseCollection}
                                     disabled={repState === 'saving' || trainingInFlight}
-                                    className="rounded-xl border border-border-color bg-white px-4 py-2.5 text-[0.8rem] font-bold uppercase tracking-[0.11em] text-muted disabled:cursor-not-allowed disabled:opacity-45"
+                                    className="rounded-xl border border-[rgba(51,153,255,0.2)] bg-[rgba(51,153,255,0.08)] px-4 py-2.5 text-[0.8rem] font-bold uppercase tracking-[0.11em] text-muted disabled:cursor-not-allowed disabled:opacity-45"
                                 >
                                     Pause
                                 </button>
                             </div>
                         </article>
 
-                        <article className="rounded-3xl border border-border-color bg-white p-5 shadow-[0_14px_30px_rgba(15,34,68,0.08)]">
+                        <article className="rounded-3xl border border-border-color bg-surface p-5 shadow-[0_20px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl">
                             <h2 className="text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-muted">Train / Retrain</h2>
-                            <div className="mt-3 rounded-xl border border-border-color bg-[#f9fbff] p-3 text-[0.84rem]">
+                            <div className="mt-3 rounded-xl border border-[rgba(51,153,255,0.12)] bg-[rgba(51,153,255,0.05)] p-3 text-[0.84rem]">
                                 <div className="font-semibold text-text">State: {trainStatus.state}</div>
                                 <div className="mt-1 text-muted">{trainStatus.message || 'No message.'}</div>
-                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#d8e8ff]">
+                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(51,153,255,0.12)]">
                                     <div
-                                        className={`h-full rounded-full transition-all duration-300 ${trainStatus.state === 'error' ? 'bg-[#d33f49]' : 'bg-gradient-to-r from-brand to-brand-end'}`}
+                                        className={`h-full rounded-full transition-all duration-300 ${trainStatus.state === 'error' ? 'bg-[rgba(255,80,60,0.78)]' : 'bg-gradient-to-r from-brand to-brand-end'}`}
                                         style={{ width: `${Math.round(Math.max(0, Math.min(1, trainStatus.progress)) * 100)}%` }}
                                     />
                                 </div>
-                                {trainError && <div className="mt-2 text-[0.78rem] font-semibold text-[#c0413f]">{trainError}</div>}
+                                {trainError && <div className="mt-2 text-[0.78rem] font-semibold text-[rgba(255,110,95,0.9)]">{trainError}</div>}
                                 {trainStatus.diagnostics && (
-                                    <div className="mt-3 rounded-xl border border-[#dbe8fb] bg-white p-3 text-[0.78rem] text-muted">
+                                    <div className="mt-3 rounded-xl border border-[rgba(51,153,255,0.12)] bg-[rgba(51,153,255,0.05)] p-3 font-mono text-[0.78rem] text-muted">
                                         <div className="font-semibold text-text">
                                             Best epoch: {trainStatus.diagnostics.best_epoch ?? 'n/a'} | Best val: {formatPct(trainStatus.diagnostics.best_val_acc)}
                                         </div>
@@ -827,7 +845,7 @@ export function ContributeLSTM() {
                                 type="button"
                                 onClick={startTraining}
                                 disabled={!canTrain}
-                                className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#006fe0] to-[#3e98ff] px-4 py-2.5 text-[0.8rem] font-bold uppercase tracking-[0.11em] text-white disabled:cursor-not-allowed disabled:opacity-45"
+                                className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#006fe0] to-[#3e98ff] px-4 py-2.5 text-[0.8rem] font-bold uppercase tracking-[0.11em] text-white shadow-[0_14px_30px_rgba(51,153,255,0.24)] disabled:cursor-not-allowed disabled:opacity-45"
                             >
                                 {trainingInFlight ? 'Training...' : 'Train / Retrain LSTM'}
                             </button>
@@ -836,14 +854,14 @@ export function ContributeLSTM() {
                             </p>
                         </article>
 
-                        <article className="rounded-3xl border border-border-color bg-white p-5 shadow-[0_14px_30px_rgba(15,34,68,0.08)]">
+                        <article className="rounded-3xl border border-border-color bg-surface p-5 shadow-[0_20px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl">
                             <h2 className="text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-muted">Trained signs</h2>
                             <div className="mt-3 flex flex-wrap gap-2">
                                 {Array.from(trainedSet).length === 0 ? (
                                     <div className="text-[0.84rem] text-muted">No trained temporal classes yet.</div>
                                 ) : (
                                     Array.from(trainedSet).sort().map((word) => (
-                                        <span key={word} className="rounded-full border border-[#9fc9ff] bg-[#edf5ff] px-3 py-1 text-[0.75rem] font-bold text-brand">
+                                        <span key={word} className="rounded-full border border-[rgba(51,153,255,0.3)] bg-[rgba(51,153,255,0.1)] px-3 py-1 text-[0.75rem] font-bold text-[#66bfff]">
                                             {word.replaceAll('_', ' ')}
                                         </span>
                                     ))

@@ -102,8 +102,8 @@ export function SentenceOutput({
                 <div
                     className={twMerge(
                         clsx(
-                            "relative overflow-hidden rounded-2xl border border-[#b9d8ff] bg-[linear-gradient(160deg,#f8fbff_0%,#edf5ff_100%)] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition-all duration-300",
-                            sentence ? "shadow-[0_10px_22px_rgba(15,34,68,0.08)]" : "text-muted"
+                            "relative overflow-hidden rounded-2xl border border-[rgba(51,153,255,0.15)] bg-[rgba(51,153,255,0.05)] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all duration-300",
+                            sentence ? "shadow-[0_10px_22px_rgba(0,0,0,0.18)]" : "text-muted"
                         )
                     )}
                     style={{ minHeight: 64, maxHeight: 90 }}
@@ -111,7 +111,7 @@ export function SentenceOutput({
                     <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-brand/30 to-transparent" />
                     {typedSentence ? (
                         <p
-                            className="text-[0.98rem] font-semibold leading-[1.32] text-[#325784]"
+                            className="text-[0.98rem] font-semibold leading-[1.32] text-[rgba(220,235,255,0.92)]"
                             style={{
                                 display: '-webkit-box',
                                 WebkitLineClamp: 3,
@@ -122,7 +122,7 @@ export function SentenceOutput({
                             {typedSentence}
                         </p>
                     ) : (
-                        <p className="text-[0.86rem] font-medium text-[#5879a4]">
+                        <p className="text-[0.86rem] font-medium text-[rgba(100,140,200,0.3)]">
                             Sentence will appear here…
                         </p>
                     )}
@@ -138,7 +138,7 @@ export function SentenceOutput({
                 />
 
                 {showAudioProcessing && (
-                    <div className="flex h-9 items-center justify-center gap-2 rounded-full border border-[#cfe2ff] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_100%)] px-4 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[#5c7fa9] shadow-[0_10px_20px_rgba(15,34,68,0.08)]">
+                    <div className="flex h-9 items-center justify-center gap-2 rounded-full border border-[rgba(51,153,255,0.16)] bg-[rgba(8,16,36,0.72)] px-4 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[rgba(140,170,220,0.75)] shadow-[0_10px_20px_rgba(0,0,0,0.18)]">
                         <span className="audio-processing-dot [animation-delay:0ms]" />
                         <span className="audio-processing-dot [animation-delay:180ms]" />
                         <span className="audio-processing-dot [animation-delay:360ms]" />
@@ -155,10 +155,10 @@ export function SentenceOutput({
                                 clsx(
                                     "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 text-[0.74rem] font-bold transition-all duration-300",
                                     isSpeaking
-                                        ? "border-[#94d5ff] bg-[#ecf7ff] text-brand shadow-[0_10px_18px_rgba(0,127,255,0.12)]"
+                                        ? "border-[rgba(51,153,255,0.3)] bg-[rgba(51,153,255,0.16)] text-brand shadow-[0_10px_18px_rgba(0,127,255,0.12)]"
                                         : autoplayBlocked
-                                            ? "border-[#ffd4a8] bg-[#fff6ea] text-[#9a5a11]"
-                                            : "border-[#c8ddff] bg-white text-brand hover:bg-[#f4f9ff]"
+                                            ? "border-[rgba(255,179,71,0.24)] bg-[rgba(255,179,71,0.12)] text-[#ffb347]"
+                                            : "border-[rgba(51,153,255,0.18)] bg-[rgba(8,16,36,0.68)] text-brand hover:bg-[rgba(51,153,255,0.08)]"
                                 )
                             )}
                         >
@@ -167,14 +167,14 @@ export function SentenceOutput({
                         <button
                             type="button"
                             onClick={stopAudio}
-                            className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#ffd0cd] bg-white px-3 text-[0.74rem] font-bold text-[#cc2d2d] transition-all duration-300 hover:bg-[#fff2f2]"
+                            className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[rgba(255,80,60,0.24)] bg-[rgba(255,80,60,0.1)] px-3 text-[0.74rem] font-bold text-[rgba(255,120,105,0.9)] transition-all duration-300 hover:bg-[rgba(255,80,60,0.16)]"
                         >
                             <Square size={13} fill="currentColor" /> Stop
                         </button>
                         <a
                             href={audioUrl}
                             download={audioFilename || 'sentisign.wav'}
-                            className="flex h-9 flex-1 items-center justify-center rounded-xl border border-[#c8ddff] bg-white px-3 text-[0.74rem] font-bold text-brand no-underline transition-all duration-300 hover:bg-[#f4f9ff]"
+                            className="flex h-9 flex-1 items-center justify-center rounded-xl border border-[rgba(51,153,255,0.18)] bg-[rgba(8,16,36,0.68)] px-3 text-[0.74rem] font-bold text-brand no-underline transition-all duration-300 hover:bg-[rgba(51,153,255,0.08)]"
                         >
                             Download
                         </a>
@@ -189,18 +189,18 @@ export function SentenceOutput({
             <div
                 className={twMerge(
                     clsx(
-                        "relative overflow-hidden rounded-[20px] border-2 border-[#b9d8ff] bg-[linear-gradient(160deg,#f8fbff_0%,#edf5ff_100%)] px-4 py-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-all duration-300",
-                        !sentence ? "text-muted" : "sentence-reveal text-text shadow-[0_12px_22px_rgba(15,34,68,0.08)]"
+                        "relative overflow-hidden rounded-[20px] border-2 border-[rgba(51,153,255,0.15)] bg-[rgba(51,153,255,0.05)] px-4 py-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all duration-300",
+                        !sentence ? "text-muted" : "sentence-reveal text-text shadow-[0_12px_22px_rgba(0,0,0,0.18)]"
                     )
                 )}
             >
                 <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-brand/30 to-transparent" />
                 {typedSentence ? (
-                    <p className="mx-auto min-h-[76px] max-w-[20ch] text-balance text-[clamp(1.35rem,2.6vw,2rem)] font-bold leading-[1.18] text-[#325784]">
+                    <p className="mx-auto min-h-[76px] max-w-[20ch] text-balance text-[clamp(1.35rem,2.6vw,2rem)] font-bold leading-[1.18] text-[rgba(220,235,255,0.92)]">
                         {typedSentence}
                     </p>
                 ) : (
-                    <p className="mx-auto min-h-[76px] max-w-[22ch] text-balance text-[1rem] font-semibold leading-[1.35] text-[#5879a4]">
+                    <p className="mx-auto min-h-[76px] max-w-[22ch] text-balance text-[1rem] font-semibold leading-[1.35] text-[rgba(100,140,200,0.3)]">
                         Generated sentence appears here
                     </p>
                 )}
@@ -208,8 +208,8 @@ export function SentenceOutput({
 
             {showAudioProcessing && (
                 <div className="animate-in fade-in zoom-in-95 duration-300">
-                    <div className="relative overflow-hidden rounded-[999px] border border-[#cfe2ff] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_100%)] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_14px_24px_rgba(15,34,68,0.08)]">
-                        <div className="pointer-events-none absolute inset-y-0 left-[-35%] w-[35%] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.9),transparent)] animate-[audio-processing-sheen_1.8s_ease-in-out_infinite]" />
+                    <div className="relative overflow-hidden rounded-[999px] border border-[rgba(51,153,255,0.16)] bg-[rgba(8,16,36,0.72)] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_14px_24px_rgba(0,0,0,0.18)]">
+                        <div className="pointer-events-none absolute inset-y-0 left-[-35%] w-[35%] bg-[linear-gradient(90deg,transparent,rgba(51,153,255,0.22),transparent)] animate-[audio-processing-sheen_1.8s_ease-in-out_infinite]" />
                         <div className="relative flex min-h-[46px] items-center justify-center gap-3">
                             <div className="flex items-center gap-1.5" aria-hidden="true">
                                 <span className="audio-processing-dot [animation-delay:0ms]" />
@@ -217,10 +217,10 @@ export function SentenceOutput({
                                 <span className="audio-processing-dot [animation-delay:360ms]" />
                             </div>
                             <div className="flex flex-col items-start">
-                                <span className="text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-[#5c7fa9]">
+                                <span className="text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-[rgba(140,170,220,0.75)]">
                                     Processing Audio
                                 </span>
-                                <span className="text-[0.82rem] font-semibold text-[#54749c]">
+                                <span className="text-[0.82rem] font-semibold text-[rgba(140,170,220,0.62)]">
                                     Preparing the spoken output...
                                 </span>
                             </div>
@@ -232,7 +232,7 @@ export function SentenceOutput({
             {audioUrl && (
                 <div className="flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-400">
                     {isSpeaking && (
-                        <div className="flex items-end justify-center gap-1.5 rounded-xl border border-[#d3e6ff] bg-[#eff6ff] py-2">
+                        <div className="flex items-end justify-center gap-1.5 rounded-xl border border-[rgba(51,153,255,0.16)] bg-[rgba(8,16,36,0.72)] py-2">
                             <span className="wave-bar [animation-delay:0ms]" />
                             <span className="wave-bar [animation-delay:120ms]" />
                             <span className="wave-bar [animation-delay:210ms]" />
@@ -241,7 +241,7 @@ export function SentenceOutput({
                         </div>
                     )}
                     {autoplayBlocked && (
-                        <div className="rounded-xl border border-[#ffd4a8] bg-[#fff6ea] px-3 py-2 text-[0.76rem] font-semibold text-[#9a5a11]">
+                        <div className="rounded-xl border border-[rgba(255,179,71,0.24)] bg-[rgba(255,179,71,0.12)] px-3 py-2 text-[0.76rem] font-semibold text-[#ffb347]">
                             Browser autoplay was blocked. Press play to start the audio.
                         </div>
                     )}
@@ -259,7 +259,7 @@ export function SentenceOutput({
                             <button
                                 type="button"
                                 onClick={stopAudio}
-                                className="flex min-w-[104px] items-center justify-center gap-2 rounded-xl border border-[#ffd0cd] bg-white px-4 py-2.5 text-[0.8rem] font-bold text-[#cc2d2d] transition-all duration-300 hover:bg-[#fff2f2] hover:shadow-[0_10px_20px_rgba(255,59,48,0.14)]"
+                                className="flex min-w-[104px] items-center justify-center gap-2 rounded-xl border border-[rgba(255,80,60,0.24)] bg-[rgba(255,80,60,0.1)] px-4 py-2.5 text-[0.8rem] font-bold text-[rgba(255,120,105,0.9)] transition-all duration-300 hover:bg-[rgba(255,80,60,0.16)] hover:shadow-[0_10px_20px_rgba(255,59,48,0.14)]"
                             >
                                 <Square size={14} fill="currentColor" /> Stop
                             </button>
@@ -267,7 +267,7 @@ export function SentenceOutput({
                                 <button
                                     type="button"
                                     onClick={() => void playAudio()}
-                                    className="flex min-w-[104px] items-center justify-center gap-2 rounded-xl border border-[#c8ddff] bg-white px-4 py-2.5 text-[0.8rem] font-bold text-brand transition-all duration-300 hover:bg-[#f4f9ff] hover:shadow-[0_10px_20px_rgba(0,127,255,0.12)]"
+                                    className="flex min-w-[104px] items-center justify-center gap-2 rounded-xl border border-[rgba(51,153,255,0.18)] bg-[rgba(8,16,36,0.68)] px-4 py-2.5 text-[0.8rem] font-bold text-brand transition-all duration-300 hover:bg-[rgba(51,153,255,0.08)] hover:shadow-[0_10px_20px_rgba(0,127,255,0.12)]"
                                 >
                                     <Play size={14} fill="currentColor" /> Play
                                 </button>
@@ -275,7 +275,7 @@ export function SentenceOutput({
                             <a
                                 href={audioUrl}
                                 download={audioFilename || 'sentisign.wav'}
-                                className="flex min-w-[120px] items-center justify-center gap-2 rounded-xl border border-[#c8ddff] bg-white px-4 py-2.5 text-[0.8rem] font-bold text-brand no-underline transition-all duration-300 hover:bg-[#f4f9ff] hover:shadow-[0_10px_20px_rgba(0,127,255,0.12)]"
+                                className="flex min-w-[120px] items-center justify-center gap-2 rounded-xl border border-[rgba(51,153,255,0.18)] bg-[rgba(8,16,36,0.68)] px-4 py-2.5 text-[0.8rem] font-bold text-brand no-underline transition-all duration-300 hover:bg-[rgba(51,153,255,0.08)] hover:shadow-[0_10px_20px_rgba(0,127,255,0.12)]"
                             >
                                 Download
                             </a>

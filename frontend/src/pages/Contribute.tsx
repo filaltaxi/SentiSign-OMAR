@@ -70,10 +70,10 @@ export function Contribute() {
     }
 
     return (
-        <div className="h-[calc(100dvh-var(--app-nav-h))] overflow-y-auto">
+        <div className="h-[calc(100dvh-var(--app-nav-h))] overflow-y-auto bg-[linear-gradient(135deg,#040c1e_0%,#060f24_52%,#03091a_100%)]">
             <div className="px-5 md:px-10 py-12 max-w-[860px] mx-auto min-h-full">
                 <div className="mb-10 pl-1 animate-in fade-in zoom-in-95 duration-500 ease-out">
-                    <h1 className="font-heading font-extrabold text-[clamp(2rem,4vw,3rem)] leading-[1.1] pb-[0.08em] mb-2 tracking-tight">
+                    <h1 className="mb-2 pb-[0.08em] font-heading text-[clamp(2rem,4vw,3rem)] font-extrabold leading-[1.1] tracking-tight text-text">
                         Contribute a <em className="text-brand not-italic">Sign</em>
                     </h1>
                     <p className="text-muted leading-relaxed max-w-[500px]">

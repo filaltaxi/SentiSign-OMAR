@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera } from 'lucide-react';
 import type { EmotionType } from './EmotionStrip';
 import type { SignModel } from '../model/ModelContext';
 import { extractTemporalFeatures, hasTemporalSignal } from '../lib/handFeatures';
@@ -687,18 +688,30 @@ export function WebcamPane({
     const predictionLabel = predictionHudActive ? wordLabel : 'Awaiting sign';
 
     return (
-        <div className={`relative h-full w-full overflow-hidden rounded-2xl border bg-[#d6e7ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-500 ${isActive ? 'camera-live-shell border-[#9fc9ff] shadow-[0_18px_36px_rgba(0,127,255,0.22)]' : 'border-[#c9defd]'}`}>
-            <div className="relative h-full w-full bg-[#d6e7ff]">
+        <div className={`relative h-full w-full overflow-hidden rounded-2xl border bg-[rgba(4,10,24,0.8)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all duration-500 ${isActive ? 'camera-live-shell border-[rgba(51,153,255,0.28)] shadow-[0_18px_36px_rgba(0,127,255,0.22)]' : 'border-[rgba(51,153,255,0.13)]'}`}>
+            <div
+                className="relative h-full w-full overflow-hidden bg-[rgba(8,16,36,0.6)]"
+                style={{ borderRadius: 'inherit' }}
+            >
                 <video
                     ref={videoRef}
                     autoPlay
                     muted
                     playsInline
                     className={`block h-full w-full scale-x-[-1] object-cover transition-all duration-500 ${isActive ? 'opacity-100' : 'opacity-55 saturate-75'}`}
+                    style={{ borderRadius: 'inherit' }}
                 />
+                {!isActive && (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-[rgba(51,153,255,0.12)] bg-[rgba(8,16,36,0.32)]">
+                            <Camera size={34} className="text-[rgba(51,153,255,0.15)]" strokeWidth={1.75} />
+                        </div>
+                    </div>
+                )}
                 <canvas
                     ref={canvasRef}
                     className="pointer-events-none absolute inset-0 h-full w-full"
+                    style={{ borderRadius: 'inherit' }}
                 />
                 <div className={`pointer-events-none absolute inset-0 border transition-all duration-500 ${isActive ? 'camera-live-pulse border-[rgba(71,158,255,0.72)]' : 'border-transparent'}`} />
 

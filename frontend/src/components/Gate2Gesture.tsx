@@ -193,14 +193,14 @@ export function Gate2Gesture({ word, onBack, onContinue }: Gate2GestureProps) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="bg-surface border border-border-color rounded-xl p-7 shadow-sm"
+            className="rounded-xl border border-border-color bg-[rgba(8,16,36,0.72)] p-7 shadow-[0_18px_40px_rgba(0,0,0,0.26)] backdrop-blur-[16px]"
         >
-            <h2 className="font-heading font-bold text-[1.2rem] mb-2 tracking-tight">Gate 2 &mdash; Gesture Check</h2>
-            <p className="text-muted text-[0.95rem] mb-6 leading-relaxed">
+            <h2 className="mb-2 font-heading text-[1.2rem] font-bold tracking-tight text-text">Gate 2 &mdash; Gesture Check</h2>
+            <p className="mb-6 text-[0.95rem] leading-relaxed text-muted">
                 Show us your sign for <strong className="text-text">{word}</strong> once so we can check it doesn't look like an existing sign.
             </p>
 
-            <div className="relative bg-[#edf5ff] rounded-lg overflow-hidden aspect-4/3 mb-6 border border-border-color shadow-inner">
+            <div className="relative mb-6 aspect-4/3 overflow-hidden rounded-lg border border-border-color bg-[rgba(4,10,26,0.78)] shadow-inner">
                 <video
                     ref={videoRef}
                     autoPlay
@@ -212,7 +212,7 @@ export function Gate2Gesture({ word, onBack, onContinue }: Gate2GestureProps) {
                     ref={canvasRef}
                     className="absolute inset-0 w-full h-full pointer-events-none scale-x-[-1]"
                 />
-                <div className="absolute bottom-3 left-3 right-3 bg-white/90 backdrop-blur-sm border border-border-color/80 rounded-lg px-3 py-2 text-[0.85rem] text-center flex items-center justify-between text-text">
+                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between rounded-lg border border-[rgba(51,153,255,0.18)] bg-[rgba(8,16,36,0.84)] px-3 py-2 text-center text-[0.85rem] text-text backdrop-blur-sm">
                     <span>{statusText}</span>
                     {!isDone && (
                         <strong className="text-brand font-mono ml-2 text-[0.95rem]">
@@ -220,7 +220,7 @@ export function Gate2Gesture({ word, onBack, onContinue }: Gate2GestureProps) {
                         </strong>
                     )}
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-border-color">
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-[rgba(51,153,255,0.12)]">
                     <div
                         className="h-full bg-brand transition-all duration-100 ease-linear"
                         style={{ width: `${progress}%` }}

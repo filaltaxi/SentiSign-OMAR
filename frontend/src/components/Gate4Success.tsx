@@ -11,9 +11,9 @@ export function Gate4Success({ onReset, word }: Gate4SuccessProps) {
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-surface border border-brand/30 rounded-xl p-8 shadow-[0_18px_34px_rgba(0,127,255,0.12)] text-center max-w-[500px] mx-auto"
+            className="mx-auto max-w-[500px] rounded-xl border border-[rgba(68,217,160,0.2)] bg-[rgba(68,217,160,0.06)] p-8 text-center shadow-[0_18px_34px_rgba(0,127,255,0.12)] backdrop-blur-[16px]"
         >
-            <div className="w-16 h-16 bg-[rgba(51,153,255,0.12)] border-2 border-brand rounded-full flex items-center justify-center text-brand text-[2rem] mx-auto mb-5 shadow-[0_0_15px_rgba(0,127,255,0.2)]">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border-2 border-[rgba(68,217,160,0.3)] bg-[rgba(68,217,160,0.12)] text-[2rem] text-[rgba(68,217,160,0.9)] shadow-[0_0_15px_rgba(68,217,160,0.18)]">
                 &#10003;
             </div>
             <h2 className="font-heading font-extrabold text-[1.8rem] mb-2 tracking-tight text-text">Success!</h2>

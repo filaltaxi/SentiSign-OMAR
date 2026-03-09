@@ -7,17 +7,17 @@
 
   --app-nav-h: 68px;
 
-  --color-bg: #f4f8ff;
-  --color-surface: #ffffff;
-  --color-border-color: #d6e5ff;
+  --color-bg: #040c1e;
+  --color-surface: rgba(8, 16, 36, 0.72);
+  --color-border-color: rgba(51, 153, 255, 0.13);
   --color-brand: #3399FF;
-  --color-brand-end: #007FFF;
+  --color-brand-end: #00C2FF;
   --color-brand-start: #FF7F40;
   --color-brand-dim: #9cc7ff;
-  --color-amber: #FFB180;
-  --color-red: #d33f49;
-  --color-text: #0f2244;
-  --color-muted: #6481a8;
+  --color-amber: #FFB347;
+  --color-red: #ff6a5e;
+  --color-text: rgba(220, 235, 255, 0.92);
+  --color-muted: rgba(140, 170, 220, 0.62);
   --radius-xl: 30px;
   --radius-lg: 18px;
 }
@@ -30,13 +30,15 @@
   body {
     @apply bg-bg text-text font-sans min-h-screen overflow-x-hidden antialiased;
     background-image:
-      radial-gradient(circle at 12% 8%, rgba(51, 153, 255, 0.2), transparent 32%),
-      radial-gradient(circle at 90% -4%, rgba(255, 127, 64, 0.24), transparent 28%),
-      radial-gradient(circle at 76% 84%, rgba(0, 127, 255, 0.16), transparent 34%),
-      linear-gradient(rgba(15, 34, 68, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(15, 34, 68, 0.05) 1px, transparent 1px);
-    background-size: auto, auto, auto, 26px 26px, 26px 26px;
+      radial-gradient(circle at 12% 8%, rgba(51, 153, 255, 0.18), transparent 30%),
+      radial-gradient(circle at 88% 2%, rgba(255, 179, 71, 0.12), transparent 24%),
+      radial-gradient(circle at 78% 82%, rgba(0, 194, 255, 0.12), transparent 30%),
+      linear-gradient(rgba(51, 153, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(51, 153, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(135deg, #040c1e 0%, #060f24 52%, #03091a 100%);
+    background-size: auto, auto, auto, 34px 34px, 34px 34px, auto;
     background-position: 0 0;
+    background-attachment: fixed;
   }
 
   #root {
@@ -120,7 +122,7 @@
   }
 
   .camera-live-shell {
-    box-shadow: 0 0 0 1px rgba(191, 223, 255, 0.8), 0 16px 30px rgba(0, 127, 255, 0.16);
+    box-shadow: 0 0 0 1px rgba(51, 153, 255, 0.22), 0 16px 30px rgba(0, 127, 255, 0.16);
   }
 
   .camera-live-pulse {
@@ -158,10 +160,14 @@
   }
 
   .btn-secondary {
-    @apply bg-white text-text border border-border-color hover:border-brand hover:text-brand;
+    @apply text-text border border-border-color hover:border-brand hover:text-brand;
+    background: rgba(51, 153, 255, 0.08);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
   }
 
   .btn-danger {
-    @apply bg-white text-red border border-[#f5c4c7] hover:bg-[#fff1f2];
+    @apply text-red border hover:text-white;
+    background: rgba(255, 80, 60, 0.1);
+    border-color: rgba(255, 80, 60, 0.24);
   }
 }

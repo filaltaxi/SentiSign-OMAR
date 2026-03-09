@@ -140,7 +140,7 @@ function ModelPickerModal({
 
     return (
         <div className="fixed inset-0 z-[10000] grid place-items-center bg-[rgba(8,18,32,0.56)] px-4">
-            <div className="w-full max-w-[620px] rounded-3xl border border-border-color bg-white p-6 shadow-[0_26px_56px_rgba(8,18,32,0.35)] sm:p-7">
+            <div className="w-full max-w-[620px] rounded-3xl border border-border-color bg-[rgba(8,16,36,0.82)] p-6 shadow-[0_26px_56px_rgba(8,18,32,0.45)] backdrop-blur-[18px] sm:p-7">
                 <h2 className="font-heading text-[1.5rem] font-extrabold tracking-tight text-text">Choose your sign model</h2>
                 <p className="mt-2 text-[0.96rem] text-muted">
                     You can switch this anytime from the top navbar.
@@ -151,8 +151,8 @@ function ModelPickerModal({
                         type="button"
                         onClick={() => setDraft('mlp')}
                         className={`rounded-2xl border px-4 py-4 text-left transition-all duration-200 ${draft === 'mlp'
-                            ? 'border-[#9fc9ff] bg-[#edf5ff] shadow-[0_14px_26px_rgba(0,127,255,0.16)]'
-                            : 'border-border-color bg-white hover:border-[#b8d4ff]'
+                            ? 'border-[rgba(51,153,255,0.35)] bg-[rgba(51,153,255,0.14)] shadow-[0_14px_26px_rgba(0,127,255,0.16)]'
+                            : 'border-border-color bg-[rgba(4,10,26,0.55)] hover:border-[rgba(51,153,255,0.28)]'
                             }`}
                     >
                         <div className="text-[0.78rem] font-bold uppercase tracking-[0.14em] text-brand">MLP</div>
@@ -164,15 +164,15 @@ function ModelPickerModal({
                         type="button"
                         onClick={() => setDraft('lstm')}
                         className={`rounded-2xl border px-4 py-4 text-left transition-all duration-200 ${draft === 'lstm'
-                            ? 'border-[#ffc7a9] bg-[#fff1e8] shadow-[0_14px_26px_rgba(200,90,33,0.14)]'
-                            : 'border-border-color bg-white hover:border-[#ffd3bf]'
+                            ? 'border-[rgba(255,179,71,0.32)] bg-[rgba(255,179,71,0.12)] shadow-[0_14px_26px_rgba(200,90,33,0.14)]'
+                            : 'border-border-color bg-[rgba(4,10,26,0.55)] hover:border-[rgba(255,179,71,0.24)]'
                             }`}
                     >
-                        <div className="text-[0.78rem] font-bold uppercase tracking-[0.14em] text-[#c85a21]">LSTM</div>
+                        <div className="text-[0.78rem] font-bold uppercase tracking-[0.14em] text-[#ffb347]">LSTM</div>
                         <div className="mt-1 font-heading text-[1.02rem] font-extrabold text-text">{MODEL_LABELS.lstm}</div>
                         <p className="mt-1.5 text-[0.84rem] text-muted">Motion-aware 60-frame recognition for temporal signing.</p>
                         {!availableModels.lstm && (
-                            <p className="mt-2 text-[0.76rem] font-semibold text-[#b35b2f]">Model not trained yet: use this mode to contribute and train first.</p>
+                            <p className="mt-2 text-[0.76rem] font-semibold text-[#ffb07c]">Model not trained yet: use this mode to contribute and train first.</p>
                         )}
                     </button>
                 </div>

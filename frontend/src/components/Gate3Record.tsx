@@ -240,10 +240,10 @@ export function Gate3Record({ word, onBack, onSubmit }: Gate3RecordProps) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="bg-surface border border-border-color rounded-xl p-7 shadow-sm"
+            className="rounded-xl border border-border-color bg-[rgba(8,16,36,0.72)] p-7 shadow-[0_18px_40px_rgba(0,0,0,0.26)] backdrop-blur-[16px]"
         >
-            <h2 className="font-heading font-bold text-[1.2rem] mb-2 tracking-tight">Recording &mdash; <span className="text-brand">{word}</span></h2>
-            <p className="text-muted text-[0.95rem] mb-6 leading-relaxed">
+            <h2 className="mb-2 font-heading text-[1.2rem] font-bold tracking-tight text-text">Recording &mdash; <span className="text-brand">{word}</span></h2>
+            <p className="mb-6 text-[0.95rem] leading-relaxed text-muted">
                 Sign <strong className="text-text">{word}</strong> repeatedly. Hold each rep clearly. We need at least 100 samples (200 recommended).
             </p>
 
@@ -260,18 +260,18 @@ export function Gate3Record({ word, onBack, onSubmit }: Gate3RecordProps) {
                     className="absolute inset-0 w-full h-full pointer-events-none scale-x-[-1]"
                 />
                 <div className="absolute top-3 inset-x-3 text-center pointer-events-none">
-                    <span className="bg-white/90 backdrop-blur-sm border border-border-color/80 rounded-full px-4 py-1.5 text-[0.85rem] inline-block shadow-md text-text font-medium">
+                    <span className="inline-block rounded-full border border-[rgba(51,153,255,0.18)] bg-[rgba(8,16,36,0.84)] px-4 py-1.5 text-[0.85rem] font-medium text-text shadow-md backdrop-blur-sm">
                         {statusText}
                     </span>
                 </div>
             </div>
 
-            <div className="mb-6 bg-bg border border-border-color rounded-lg p-4">
+            <div className="mb-6 rounded-lg border border-border-color bg-[rgba(4,10,26,0.55)] p-4">
                 <div className="flex justify-between text-[0.85rem] font-medium mb-3">
                     <span className="text-muted">Samples collected</span>
                     <span className={canSubmit ? "text-brand font-bold" : "text-text"}>{samples.length} / {TARGET}</span>
                 </div>
-                <div className="h-2.5 bg-surface border border-border-color rounded-full overflow-hidden">
+                <div className="h-2.5 overflow-hidden rounded-full border border-border-color bg-[rgba(51,153,255,0.12)]">
                     <div
                         className={`h-full transition-all duration-300 ${canSubmit ? 'bg-brand shadow-[0_0_10px_var(--color-brand)]' : 'bg-[#9cc7ff]'}`}
                         style={{ width: `${progressPct}%` }}

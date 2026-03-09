@@ -236,6 +236,7 @@ export const Communicate: React.FC = () => {
     const [minConfidence, setMinConfidence] = useState(DEFAULT_MIN_CONFIDENCE);
     const [holdFramesSetting, setHoldFramesSetting] = useState(DEFAULT_HOLD_FRAMES_MLP);
     const [cameraReady, setCameraReady] = useState(false);
+    const [pendingAutoStart, setPendingAutoStart] = useState(false);
 
     const [commitResetNonce, setCommitResetNonce] = useState(0);
     const [wordBuffer, setWordBuffer] = useState<string[]>([]);
@@ -438,6 +439,7 @@ export const Communicate: React.FC = () => {
         }
 
         setSessionActive(false);
+        setPendingAutoStart(false);
         clearWords();
     }, [clearWords, sessionResetNonce]);
 
@@ -514,6 +516,15 @@ export const Communicate: React.FC = () => {
 
     const handleStopSession = () => setSessionActive(false);
 
+    useEffect(() => {
+        if (!initialized || !cameraReady || !pendingAutoStart || sessionActive) {
+            return;
+        }
+
+        handleStartSession();
+        setPendingAutoStart(false);
+    }, [cameraReady, initialized, pendingAutoStart, sessionActive]);
+
     if (!initialized) {
         return (
             <div
@@ -585,7 +596,20 @@ export const Communicate: React.FC = () => {
                                     margin: '0 auto',
                                 }}
                             >
-                                <Camera size={34} color="#3399ff" strokeWidth={1.5} />
+                                <img
+                                    src="/hand-sign-svgrepo-com.svg"
+                                    alt=""
+                                    aria-hidden="true"
+                                    style={{
+                                        width: 38,
+                                        height: 38,
+                                        display: 'block',
+                                        objectFit: 'contain',
+                                        opacity: 0.92,
+                                        transform: 'translateX(-3px)',
+                                        filter: 'brightness(0) saturate(100%) invert(56%) sepia(84%) saturate(2308%) hue-rotate(188deg) brightness(102%) contrast(103%)',
+                                    }}
+                                />
                             </div>
 
                             <div style={{ position: 'absolute', inset: 0, width: 80, height: 80, margin: 'auto' }}>
@@ -823,7 +847,9 @@ export const Communicate: React.FC = () => {
                                 type="button"
                                 onClick={() => {
                                     setInitialized(true);
-                                    handleStartSession();
+                                    setPendingAutoStart(true);
+                                    setSessionActive(false);
+                                    setCameraReady(false);
                                     setTimeout(() => setCameraReady(true), 800);
                                 }}
                                 whileHover={{ scale: 1.025, y: -2 }}
@@ -1289,7 +1315,15 @@ export const Communicate: React.FC = () => {
                     className="ss-generate-btn"
                     onClick={isGenerating ? cancelGeneration : handleGenerateAndSpeak}
                     disabled={!isGenerating && !canGenerate}
-                    whileHover={(!isGenerating && !canGenerate) ? {} : { scale: 1.02, y: -2 }}
+                    whileHover={
+                        (!isGenerating && !canGenerate)
+                            ? {}
+                            : {
+                                  boxShadow: isGenerating
+                                      ? '0 8px 22px rgba(255,80,60,0.16)'
+                                      : '0 8px 24px rgba(68,217,160,0.2)',
+                              }
+                    }
                     whileTap={(!isGenerating && !canGenerate) ? {} : { scale: 0.97 }}
                     style={{
                         width: '100%',
@@ -1413,6 +1447,7 @@ export const Communicate: React.FC = () => {
                         onClick={() => {
                             setInitialized(false);
                             setSessionActive(false);
+                            setPendingAutoStart(false);
                             clearWords();
                             setCameraReady(false);
                         }}
