@@ -109,7 +109,7 @@ export function MainLayout() {
                                 onClick={() => setModel('mlp')}
                                 className={`h-8 rounded-full px-3 text-[0.72rem] font-extrabold uppercase tracking-[0.12em] transition-colors ${model === 'mlp' ? 'bg-[#edf5ff] text-brand' : 'text-muted hover:bg-[#f2f7ff] hover:text-text'}`}
                             >
-                                MLP
+                                CSL
                             </button>
                             <button
                                 type="button"
@@ -117,7 +117,7 @@ export function MainLayout() {
                                 className={`h-8 rounded-full px-3 text-[0.72rem] font-extrabold uppercase tracking-[0.12em] transition-colors ${model === 'lstm' ? 'bg-[#fff1e8] text-[#c85a21]' : 'text-muted hover:bg-[#fdf3ed] hover:text-text'}`}
                                 title={availableModels.lstm ? 'Temporal LSTM' : 'Temporal LSTM (train required)'}
                             >
-                                LSTM
+                                ASL
                             </button>
                         </div>
                         </div>
