@@ -6,9 +6,9 @@ interface WordBufferProps {
 
 export function WordBuffer({ words }: WordBufferProps) {
     return (
-        <div className="min-h-[56px] rounded-2xl border border-border-color bg-[#f8fbff] p-3 flex flex-wrap items-center gap-2 [@media(max-height:820px)]:min-h-[44px] [@media(max-height:820px)]:p-2.5">
+        <div className="h-full min-h-[56px] rounded-2xl border border-border-color bg-[#f8fbff] p-3 flex flex-wrap content-start gap-2 [@media(max-height:820px)]:min-h-[44px] [@media(max-height:820px)]:p-2.5">
             {words.length === 0 ? (
-                <span className="text-muted text-[0.82rem] italic font-medium tracking-wide">
+                <span className="m-auto text-muted text-[0.82rem] italic font-medium tracking-wide">
                     Words will appear here as you sign...
                 </span>
             ) : (

@@ -37,7 +37,6 @@ const LSTM_FEATURE_DIM = 126;
 const LSTM_MIN_INFERENCE_FRAMES = 10;
 const LSTM_NO_SIGNAL_FRAMES = 10;
 const LSTM_STRIDE_FRAMES = 5;
-const LSTM_WINDOW_SEGMENTS = 12;
 const LSTM_COOLDOWN_MS = 500;
 
 export type SignDetectionMeta = {
@@ -74,7 +73,6 @@ export function WebcamPane({
     commitResetNonce,
     onEmotionDetected,
     onSignDetected,
-    currentEmotion,
     wordLabel,
     confidence,
 }: WebcamPaneProps) {
@@ -665,9 +663,6 @@ export function WebcamPane({
     const readyProgress = temporalHud.phase === 'cooldown'
         ? Math.min(1, (LSTM_COOLDOWN_MS - temporalHud.cooldownRemainingMs) / LSTM_COOLDOWN_MS)
         : Math.min(1, temporalHud.signalFrames / LSTM_MIN_INFERENCE_FRAMES);
-    const stridePipsFilled = temporalHud.inFlight
-        ? LSTM_STRIDE_FRAMES
-        : Math.min(LSTM_STRIDE_FRAMES, temporalHud.strideFrames);
     const temporalPhaseLabel = temporalHud.inFlight
         ? 'Scanning'
         : temporalHud.phase === 'collecting'
@@ -682,15 +677,18 @@ export function WebcamPane({
             : temporalHud.phase === 'cooldown'
                 ? 'bg-[#ffb357] shadow-[0_0_10px_rgba(255,179,87,0.4)]'
                 : 'bg-[#a8bfdc]';
-    const segmentLabel = temporalHud.phase === 'cooldown' ? 'Cooldown' : 'Segment';
-    const warmupLabel = temporalHud.phase === 'cooldown' ? 'Rearm' : 'Warmup';
-    const warmupProgressValue = temporalHud.phase === 'cooldown'
+    const hudMetricLabel = temporalHud.phase === 'cooldown' ? 'Rearm' : 'Segment';
+    const hudMetricValue = temporalHud.phase === 'cooldown'
         ? `${(temporalHud.cooldownRemainingMs / 1000).toFixed(1)}s`
         : `${Math.min(temporalHud.signalFrames, LSTM_MIN_INFERENCE_FRAMES)}/${LSTM_MIN_INFERENCE_FRAMES}`;
+    const confidencePercent = Math.round(confidence * 100);
+    const showPredictionHud = isActive;
+    const predictionHudActive = wordLabel !== 'No sign detected' && confidencePercent > 0;
+    const predictionLabel = predictionHudActive ? wordLabel : 'Awaiting sign';
 
     return (
-        <div className={`relative overflow-hidden rounded-2xl border bg-[#eef5ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-500 ${isActive ? 'camera-live-shell border-[#9fc9ff] shadow-[0_18px_36px_rgba(0,127,255,0.22)]' : 'border-[#c9defd]'}`}>
-            <div className="relative aspect-4/3 bg-[#d6e7ff]">
+        <div className={`relative h-full w-full overflow-hidden rounded-2xl border bg-[#d6e7ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-500 ${isActive ? 'camera-live-shell border-[#9fc9ff] shadow-[0_18px_36px_rgba(0,127,255,0.22)]' : 'border-[#c9defd]'}`}>
+            <div className="relative h-full w-full bg-[#d6e7ff]">
                 <video
                     ref={videoRef}
                     autoPlay
@@ -704,119 +702,62 @@ export function WebcamPane({
                 />
                 <div className={`pointer-events-none absolute inset-0 border transition-all duration-500 ${isActive ? 'camera-live-pulse border-[rgba(71,158,255,0.72)]' : 'border-transparent'}`} />
 
-                {/* Top Left Status */}
-                <div className={`absolute left-3 top-3 flex items-center gap-2.5 rounded-full border bg-white/95 px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.14em] shadow-[0_8px_18px_rgba(15,34,68,0.12)] ${isActive ? 'border-[#c0dbff] text-brand' : 'border-[#c8defe] text-muted'}`}>
-                    <div className={`h-2.5 w-2.5 rounded-full transition-all duration-300 ${isActive ? 'bg-brand shadow-[0_0_12px_rgba(0,127,255,0.7)]' : 'bg-[#9ab5d7]'}`} />
-                    <span>{isActive ? 'LIVE' : 'Standby'}</span>
-                </div>
+                {(showPredictionHud || (model === 'lstm' && isActive)) && (
+                    <div className="absolute bottom-4 left-4 z-10 flex max-w-[calc(100%-2rem)] flex-col gap-2.5">
+                        {showPredictionHud && (
+                            <div
+                                className="flex max-w-[260px] items-center gap-2 rounded-full px-4 py-2 text-white shadow-[0_10px_24px_rgba(0,0,0,0.22)] backdrop-blur-md transition-all duration-200"
+                                style={{
+                                    border: predictionHudActive ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255,255,255,0.08)',
+                                    background: predictionHudActive ? 'rgba(3,18,40,0.72)' : 'rgba(3,18,40,0.52)',
+                                }}
+                            >
+                                <span
+                                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full transition-all duration-200"
+                                    style={{
+                                        background: predictionHudActive ? '#44d9a0' : 'rgba(160,190,230,0.7)',
+                                        boxShadow: predictionHudActive ? '0 0 10px rgba(68,217,160,0.7)' : 'none',
+                                    }}
+                                />
+                                <span
+                                    className="truncate text-[0.66rem] font-semibold uppercase tracking-[0.14em] transition-colors duration-200"
+                                    style={{ color: predictionHudActive ? 'rgba(255,255,255,0.78)' : 'rgba(220,232,255,0.56)' }}
+                                >
+                                    {predictionLabel}
+                                </span>
+                                <span
+                                    className="font-mono text-[0.74rem] font-bold transition-colors duration-200"
+                                    style={{ color: predictionHudActive ? '#8cd2ff' : 'rgba(170,198,236,0.58)' }}
+                                >
+                                    {confidencePercent}%
+                                </span>
+                            </div>
+                        )}
 
-                {/* Top Right Emotion */}
-                <div
-                    className="absolute right-3 top-3 rounded-lg border bg-white/92 px-3 py-1.5 text-[0.78rem] font-semibold capitalize transition-colors duration-400"
-                    style={{
-                        borderColor: getEmotionColor(currentEmotion),
-                        color: getEmotionColor(currentEmotion)
-                    }}
-                >
-                    {isActive ? currentEmotion : '—'}
-                </div>
-
-                {model === 'lstm' && isActive && (
-                    <div className="absolute bottom-3 left-3 w-[min(232px,calc(100%-1.5rem))] rounded-2xl border border-[#d6e5fb] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(244,249,255,0.92)_100%)] px-3 py-2.5 text-text shadow-[0_14px_28px_rgba(15,34,68,0.14)] backdrop-blur-sm">
-                        <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
+                        {model === 'lstm' && isActive && (
+                            <div className="flex w-[min(240px,calc(100vw-3rem))] items-center gap-3 rounded-2xl border border-white/15 bg-[#031228]/72 px-4 py-3 text-white shadow-[0_14px_28px_rgba(0,0,0,0.24)] backdrop-blur-md">
                                 <span className={`h-2 w-2 rounded-full transition-all duration-300 ${temporalPhaseDotClass}`} />
-                                <span className="text-[0.64rem] font-bold uppercase tracking-[0.18em] text-muted">
-                                    {temporalPhaseLabel}
-                                </span>
-                            </div>
-                            <span className="rounded-full border border-[#ffd4bf] bg-[#fff4ed] px-2 py-0.5 text-[0.58rem] font-bold uppercase tracking-[0.18em] text-[#c85a21]">
-                                Segmented
-                            </span>
-                        </div>
-
-                        <div className="mt-2 flex items-end justify-between gap-3">
-                            <div className="flex items-baseline gap-1.5">
-                                <span className="font-heading text-[1.1rem] font-black leading-none text-text">
-                                    {temporalHud.windowFrames}
-                                </span>
-                                <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
-                                    / {LSTM_N_FRAMES}
-                                </span>
-                            </div>
-                            <div className="text-[0.58rem] font-bold uppercase tracking-[0.18em] text-muted">{segmentLabel}</div>
-                        </div>
-
-                        <div className="mt-2 grid grid-cols-12 gap-1">
-                            {Array.from({ length: LSTM_WINDOW_SEGMENTS }, (_, index) => {
-                                const filled = windowProgress >= (index + 1) / LSTM_WINDOW_SEGMENTS;
-                                return (
-                                    <span
-                                        key={index}
-                                        className={`h-1.5 rounded-full transition-all duration-300 ${filled ? 'bg-gradient-to-r from-brand to-brand-end shadow-[0_0_10px_rgba(0,127,255,0.24)]' : 'bg-[#dbe8fb]'}`}
-                                    />
-                                );
-                            })}
-                        </div>
-
-                        <div className="mt-2.5 flex items-center justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between text-[0.56rem] font-bold uppercase tracking-[0.18em] text-muted">
-                                    <span>{warmupLabel}</span>
-                                    <span>{warmupProgressValue}</span>
-                                </div>
-                                <div className="mt-1 h-1 overflow-hidden rounded-full bg-[#dbe8fb]">
-                                    <div
-                                        className="h-full rounded-full bg-gradient-to-r from-brand to-[#80bcff] transition-all duration-300"
-                                        style={{ width: `${readyProgress * 100}%` }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                                {Array.from({ length: LSTM_STRIDE_FRAMES }, (_, index) => {
-                                    const active = index < stridePipsFilled;
-                                    return (
-                                        <span
-                                            key={index}
-                                            className={`h-2 w-2 rounded-full transition-all duration-300 ${active ? 'bg-[#ff9b68] shadow-[0_0_8px_rgba(255,155,104,0.38)]' : 'bg-[#d9e3f2]'}`}
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2 text-[0.58rem] font-bold uppercase tracking-[0.18em] text-white/65">
+                                        <span>{temporalPhaseLabel}</span>
+                                        <span>{hudMetricLabel}</span>
+                                    </div>
+                                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/12">
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-[#53b1ff] to-[#9ed7ff] transition-all duration-300"
+                                            style={{ width: `${Math.max(windowProgress, readyProgress) * 100}%` }}
                                         />
-                                    );
-                                })}
+                                    </div>
+                                    <div className="mt-1 text-[0.64rem] font-medium tracking-[0.08em] text-white/78">
+                                        {temporalHud.windowFrames}/{LSTM_N_FRAMES} · {hudMetricValue}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 )}
-            </div>
 
-            {/* Sign Confidence Strip */}
-            <div className={`flex items-center gap-4 border-t px-5 py-3.5 text-[0.82rem] transition-all duration-300 ${isActive ? 'border-[#c8defe] bg-[#f4f9ff]' : 'border-border-color bg-white'}`}>
-                <span className={`min-w-[160px] truncate text-[0.77rem] font-bold uppercase tracking-[0.15em] transition-colors ${isActive && confidence > 0 ? 'text-brand' : 'text-muted'}`}>
-                    {wordLabel}
-                </span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#d8e8ff]">
-                    <div
-                        className="h-full rounded-full bg-gradient-to-r from-brand to-brand-end transition-all duration-300 shadow-[0_0_10px_rgba(0,127,255,0.38)]"
-                        style={{ width: `${Math.round(confidence * 100)}%` }}
-                    />
-                </div>
-                <span className={`min-w-[45px] text-right font-mono text-[0.8rem] font-bold ${isActive && confidence > 0 ? 'text-brand' : 'text-muted'}`}>
-                    {Math.round(confidence * 100)}%
-                </span>
             </div>
         </div>
     );
-}
-
-function getEmotionColor(e: string) {
-    const map: Record<string, string> = {
-        happy: '#007FFF',
-        sad: '#5c8fd8',
-        angry: '#d33f49',
-        fear: '#6f8ab8',
-        disgust: '#6481a8',
-        surprise: '#FF7F40',
-        neutral: '#3399FF'
-    };
-    return map[e] || '#3399FF';
 }

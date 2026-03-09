@@ -8,6 +8,7 @@ interface SentenceOutputProps {
     audioUrl?: string | null;
     audioFilename?: string | null;
     generationStage?: 'idle' | 'sentence' | 'audio';
+    compact?: boolean;
 }
 
 export function SentenceOutput({
@@ -15,6 +16,7 @@ export function SentenceOutput({
     audioUrl,
     audioFilename,
     generationStage = 'idle',
+    compact = false,
 }: SentenceOutputProps) {
     const [typedSentence, setTypedSentence] = useState<string>('');
     const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
@@ -93,6 +95,94 @@ export function SentenceOutput({
         audioEl.currentTime = 0;
         setIsSpeaking(false);
     };
+
+    if (compact) {
+        return (
+            <div className="flex flex-col gap-2">
+                <div
+                    className={twMerge(
+                        clsx(
+                            "relative overflow-hidden rounded-2xl border border-[#b9d8ff] bg-[linear-gradient(160deg,#f8fbff_0%,#edf5ff_100%)] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition-all duration-300",
+                            sentence ? "shadow-[0_10px_22px_rgba(15,34,68,0.08)]" : "text-muted"
+                        )
+                    )}
+                    style={{ minHeight: 64, maxHeight: 90 }}
+                >
+                    <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-brand/30 to-transparent" />
+                    {typedSentence ? (
+                        <p
+                            className="text-[0.98rem] font-semibold leading-[1.32] text-[#325784]"
+                            style={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                            }}
+                        >
+                            {typedSentence}
+                        </p>
+                    ) : (
+                        <p className="text-[0.86rem] font-medium text-[#5879a4]">
+                            Sentence will appear here…
+                        </p>
+                    )}
+                </div>
+
+                <audio
+                    src={audioUrl ?? undefined}
+                    ref={audioRef}
+                    onPlay={() => setIsSpeaking(true)}
+                    onPause={() => setIsSpeaking(false)}
+                    onEnded={() => setIsSpeaking(false)}
+                    className="hidden"
+                />
+
+                {showAudioProcessing && (
+                    <div className="flex h-9 items-center justify-center gap-2 rounded-full border border-[#cfe2ff] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_100%)] px-4 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[#5c7fa9] shadow-[0_10px_20px_rgba(15,34,68,0.08)]">
+                        <span className="audio-processing-dot [animation-delay:0ms]" />
+                        <span className="audio-processing-dot [animation-delay:180ms]" />
+                        <span className="audio-processing-dot [animation-delay:360ms]" />
+                        Processing audio
+                    </div>
+                )}
+
+                {audioUrl && (
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => void playAudio()}
+                            className={twMerge(
+                                clsx(
+                                    "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 text-[0.74rem] font-bold transition-all duration-300",
+                                    isSpeaking
+                                        ? "border-[#94d5ff] bg-[#ecf7ff] text-brand shadow-[0_10px_18px_rgba(0,127,255,0.12)]"
+                                        : autoplayBlocked
+                                            ? "border-[#ffd4a8] bg-[#fff6ea] text-[#9a5a11]"
+                                            : "border-[#c8ddff] bg-white text-brand hover:bg-[#f4f9ff]"
+                                )
+                            )}
+                        >
+                            <Play size={13} fill="currentColor" /> Play
+                        </button>
+                        <button
+                            type="button"
+                            onClick={stopAudio}
+                            className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#ffd0cd] bg-white px-3 text-[0.74rem] font-bold text-[#cc2d2d] transition-all duration-300 hover:bg-[#fff2f2]"
+                        >
+                            <Square size={13} fill="currentColor" /> Stop
+                        </button>
+                        <a
+                            href={audioUrl}
+                            download={audioFilename || 'sentisign.wav'}
+                            className="flex h-9 flex-1 items-center justify-center rounded-xl border border-[#c8ddff] bg-white px-3 text-[0.74rem] font-bold text-brand no-underline transition-all duration-300 hover:bg-[#f4f9ff]"
+                        >
+                            Download
+                        </a>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-3">
