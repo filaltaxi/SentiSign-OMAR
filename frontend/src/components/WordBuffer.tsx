@@ -26,10 +26,10 @@ export function WordBuffer({ words }: WordBufferProps) {
                         {words.map((word, i) => (
                             <motion.span
                                 key={`${word}-${i}`}
-                                initial={{ opacity: 0, scale: 0.86, y: 6 }}
+                                initial={{ opacity: 0, scale: 0.7, y: 6 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.86 }}
-                                transition={{ duration: 0.2 }}
+                                transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                                 className="block rounded-full border border-[rgba(51,153,255,0.22)] bg-[rgba(51,153,255,0.08)] px-3.5 py-2 text-[0.76rem] font-extrabold uppercase tracking-[0.12em] text-[rgba(51,153,255,0.92)] shadow-[0_10px_18px_rgba(0,127,255,0.14)]"
                             >
                                 {word}

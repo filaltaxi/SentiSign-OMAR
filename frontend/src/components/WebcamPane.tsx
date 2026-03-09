@@ -39,6 +39,15 @@ const LSTM_MIN_INFERENCE_FRAMES = 10;
 const LSTM_NO_SIGNAL_FRAMES = 10;
 const LSTM_STRIDE_FRAMES = 5;
 const LSTM_COOLDOWN_MS = 500;
+const EMOTION_AURA_COLORS: Record<EmotionType, string> = {
+    neutral: '51,153,255',
+    happy: '255,213,79',
+    sad: '130,100,255',
+    angry: '255,75,75',
+    fear: '180,80,255',
+    disgust: '80,210,120',
+    surprise: '255,160,50',
+};
 
 export type SignDetectionMeta = {
     margin?: number;
@@ -74,6 +83,7 @@ export function WebcamPane({
     commitResetNonce,
     onEmotionDetected,
     onSignDetected,
+    currentEmotion,
     wordLabel,
     confidence,
 }: WebcamPaneProps) {
@@ -686,9 +696,18 @@ export function WebcamPane({
     const showPredictionHud = isActive;
     const predictionHudActive = wordLabel !== 'No sign detected' && confidencePercent > 0;
     const predictionLabel = predictionHudActive ? wordLabel : 'Awaiting sign';
+    const auraRgb = EMOTION_AURA_COLORS[isActive ? currentEmotion : 'neutral'];
 
     return (
-        <div className={`relative h-full w-full overflow-hidden rounded-2xl border bg-[rgba(4,10,24,0.8)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all duration-500 ${isActive ? 'camera-live-shell border-[rgba(51,153,255,0.28)] shadow-[0_18px_36px_rgba(0,127,255,0.22)]' : 'border-[rgba(51,153,255,0.13)]'}`}>
+        <div
+            className="relative h-full w-full overflow-hidden rounded-2xl border bg-[rgba(4,10,24,0.8)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all duration-500"
+            style={{
+                borderColor: `rgba(${auraRgb},${isActive ? 0.28 : 0.13})`,
+                boxShadow: isActive
+                    ? `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(${auraRgb},0.18), 0 18px 36px rgba(${auraRgb},0.16)`
+                    : 'inset 0 1px 0 rgba(255,255,255,0.04)',
+            }}
+        >
             <div
                 className="relative h-full w-full overflow-hidden bg-[rgba(8,16,36,0.6)]"
                 style={{ borderRadius: 'inherit' }}
@@ -713,7 +732,12 @@ export function WebcamPane({
                     className="pointer-events-none absolute inset-0 h-full w-full"
                     style={{ borderRadius: 'inherit' }}
                 />
-                <div className={`pointer-events-none absolute inset-0 border transition-all duration-500 ${isActive ? 'camera-live-pulse border-[rgba(71,158,255,0.72)]' : 'border-transparent'}`} />
+                <div
+                    className="pointer-events-none absolute inset-0 border transition-all duration-500"
+                    style={{
+                        borderColor: isActive ? `rgba(${auraRgb},0.48)` : 'transparent',
+                    }}
+                />
 
                 {(showPredictionHud || (model === 'lstm' && isActive)) && (
                     <div className="absolute bottom-4 left-4 z-10 flex max-w-[calc(100%-2rem)] flex-col gap-2.5">

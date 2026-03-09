@@ -9,6 +9,7 @@ interface SentenceOutputProps {
     audioFilename?: string | null;
     generationStage?: 'idle' | 'sentence' | 'audio';
     compact?: boolean;
+    onPlaybackChange?: (speaking: boolean) => void;
 }
 
 export function SentenceOutput({
@@ -17,12 +18,17 @@ export function SentenceOutput({
     audioFilename,
     generationStage = 'idle',
     compact = false,
+    onPlaybackChange,
 }: SentenceOutputProps) {
     const [typedSentence, setTypedSentence] = useState<string>('');
     const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
     const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const showAudioProcessing = generationStage === 'audio' && !audioUrl;
+
+    useEffect(() => {
+        onPlaybackChange?.(isSpeaking);
+    }, [isSpeaking, onPlaybackChange]);
 
     useEffect(() => {
         if (!sentence) {

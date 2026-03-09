@@ -15,6 +15,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 const DEFAULT_HOLD_FRAMES_MLP = 10;
 const DEFAULT_MIN_CONFIDENCE = 0.60;
 const LSTM_DUPLICATE_GUARD_MS = 250;
+const EMOTION_COLORS: Record<EmotionType, string> = {
+    neutral: '51,153,255',
+    happy: '255,213,79',
+    sad: '130,100,255',
+    angry: '255,75,75',
+    fear: '180,80,255',
+    disgust: '80,210,120',
+    surprise: '255,160,50',
+};
 const EMOTION_OPTIONS: Array<{ type: EmotionType; emoji: string; label: string }> = [
     { type: 'neutral', emoji: '😐', label: 'NEUTRAL' },
     { type: 'happy', emoji: '🙂', label: 'HAPPY' },
@@ -51,6 +60,101 @@ const getMostFrequentEmotion = (counts: EmotionCounts): EmotionType => {
     return winner;
 };
 
+const getConfidenceColor = (confidence: number): string => {
+    if (confidence >= 0.8) {
+        return '#44d9a0';
+    }
+    if (confidence >= 0.6) {
+        return '#3399ff';
+    }
+    return '#ffb347';
+};
+
+type ConfidenceRingProps = {
+    confidence: number;
+    active: boolean;
+};
+
+const ConfidenceRing: React.FC<ConfidenceRingProps> = ({ confidence, active }) => {
+    const normalizedConfidence = Math.max(0, Math.min(1, confidence));
+    const radius = 16;
+    const circumference = 2 * Math.PI * radius;
+    const strokeColor = active ? getConfidenceColor(normalizedConfidence) : 'rgba(140,170,220,0.45)';
+    const labelColor = active ? strokeColor : 'rgba(180,210,255,0.55)';
+    const dashOffset = circumference * (1 - normalizedConfidence);
+
+    return (
+        <div
+            style={{
+                width: 44,
+                height: 44,
+                borderRadius: '50%',
+                background: 'rgba(4,12,30,0.72)',
+                border: '1px solid rgba(51,153,255,0.18)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: active ? `0 0 20px ${strokeColor}22` : 'none',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+            }}
+        >
+            <svg width="36" height="36" viewBox="0 0 44 44" aria-hidden="true">
+                <circle
+                    cx="22"
+                    cy="22"
+                    r={radius}
+                    fill="none"
+                    stroke="rgba(51,153,255,0.12)"
+                    strokeWidth="3"
+                />
+                <circle
+                    cx="22"
+                    cy="22"
+                    r={radius}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={dashOffset}
+                    style={{
+                        transition: 'stroke-dashoffset 0.3s ease, stroke 0.5s ease',
+                        transform: 'rotate(-90deg)',
+                        transformOrigin: '50% 50%',
+                    }}
+                />
+                <text
+                    x="22"
+                    y="25"
+                    textAnchor="middle"
+                    fill={labelColor}
+                    fontSize="8.5"
+                    fontFamily="JetBrains Mono, monospace"
+                    fontWeight="700"
+                >
+                    {Math.round(normalizedConfidence * 100)}%
+                </text>
+            </svg>
+        </div>
+    );
+};
+
+const AudioBars: React.FC<{ color?: string }> = ({ color = 'currentColor' }) => (
+    <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 3, height: 14, color }} aria-hidden="true">
+        {[0, 120, 240, 80, 180].map((delay, index) => (
+            <span
+                key={index}
+                className="ss-eq-bar"
+                style={{
+                    animationDelay: `${delay}ms`,
+                    background: 'currentColor',
+                }}
+            />
+        ))}
+    </span>
+);
+
 const GLOBAL_STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -84,12 +188,25 @@ const GLOBAL_STYLES = `
     50%     { opacity: 0.2; }
 }
 
+@keyframes ss-eq-bar {
+    0%, 100% { transform: scaleY(0.32); opacity: 0.45; }
+    50% { transform: scaleY(1); opacity: 1; }
+}
+
 .sentisign-glow-shift  { animation: sentisign-glow-shift 3s ease-in-out infinite; }
 .sentisign-orbit       { animation: sentisign-orbit 8s linear infinite; }
 .sentisign-orbit2      { animation: sentisign-orbit2 6s linear infinite; }
 .sentisign-float       { animation: sentisign-float 4s ease-in-out infinite; }
 .sentisign-dot-blink   { animation: sentisign-dot-blink 1.1s ease-in-out infinite; }
 .sentisign-spin        { animation: sentisign-spin 0.8s linear infinite; }
+.ss-eq-bar {
+    width: 3px;
+    height: 100%;
+    border-radius: 999px;
+    transform-origin: bottom;
+    animation: ss-eq-bar 0.9s ease-in-out infinite;
+    box-shadow: 0 0 12px currentColor;
+}
 
 .ss-slider {
     -webkit-appearance: none;
@@ -249,11 +366,14 @@ export const Communicate: React.FC = () => {
     const [emotionOverride, setEmotionOverride] = useState<EmotionType | null>(null);
     const [signLabel, setSignLabel] = useState<string>('No sign detected');
     const [confidence, setConfidence] = useState<number>(0);
+    const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
     const detectedEmotion = getMostFrequentEmotion(emotionCounts);
     const selectedEmotion = emotionOverride ?? detectedEmotion;
     const canGenerate = wordBuffer.length > 0;
     const isGenerating = generationStage !== 'idle';
+    const cameraAuraRgb = EMOTION_COLORS[sessionActive ? detectedEmotion : 'neutral'];
+    const showSpeakingBars = generationStage === 'audio' || isAudioPlaying;
 
     const trackingRef = useRef<{
         holdCounter: number;
@@ -421,6 +541,7 @@ export const Communicate: React.FC = () => {
         setSentence('');
         setAudioUrl(null);
         setAudioFilename(null);
+        setIsAudioPlaying(false);
         setEmotionCounts(createEmotionCounts());
         setSignLabel('No sign detected');
         setConfidence(0);
@@ -462,6 +583,7 @@ export const Communicate: React.FC = () => {
 
         setGenerationError(null);
         setGenerationStage('sentence');
+        setIsAudioPlaying(false);
 
         try {
             const data = await generateSentence(wordBuffer, selectedEmotion, { signal: abortController.signal });
@@ -883,8 +1005,6 @@ export const Communicate: React.FC = () => {
         );
     }
 
-    const confPct = Math.round(confidence * 100);
-
     return (
         <motion.div
             initial={{ opacity: 0 }}
@@ -912,11 +1032,11 @@ export const Communicate: React.FC = () => {
                             overflow: 'hidden',
                             position: 'relative',
                             zIndex: 1,
-                            border: sessionActive ? '1px solid rgba(51,153,255,0.55)' : '1px solid rgba(51,153,255,0.2)',
+                            border: `1px solid rgba(${cameraAuraRgb},${sessionActive ? 0.55 : 0.2})`,
                             boxShadow: sessionActive
-                                ? '0 0 0 1px rgba(51,153,255,0.12), 0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(51,153,255,0.15)'
+                                ? `0 0 0 1px rgba(${cameraAuraRgb},0.16), 0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(${cameraAuraRgb},0.2)`
                                 : '0 20px 60px rgba(0,0,0,0.6)',
-                            transition: 'border-color 0.4s, box-shadow 0.4s',
+                            transition: 'border-color 0.8s ease, box-shadow 0.8s ease',
                         }}
                     >
                         <div
@@ -959,34 +1079,13 @@ export const Communicate: React.FC = () => {
                             </div>
 
                             <AnimatePresence>
-                                {sessionActive && confidence > 0 && (
+                                {sessionActive && (
                                     <motion.div
                                         initial={{ opacity: 0, scale: 0.8 }}
                                         animate={{ opacity: 1, scale: 1 }}
                                         exit={{ opacity: 0, scale: 0.8 }}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.5rem',
-                                            background: 'rgba(4,12,30,0.75)',
-                                            border: '1px solid rgba(51,153,255,0.25)',
-                                            borderRadius: 8,
-                                            padding: '4px 10px',
-                                        }}
                                     >
-                                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', color: 'rgba(180,210,255,0.6)' }}>
-                                            CONF
-                                        </span>
-                                        <span
-                                            style={{
-                                                fontFamily: "'JetBrains Mono', monospace",
-                                                fontSize: '0.82rem',
-                                                fontWeight: 700,
-                                                color: confPct >= 80 ? '#44d9a0' : confPct >= 60 ? '#3399ff' : '#ffb347',
-                                            }}
-                                        >
-                                            {confPct}%
-                                        </span>
+                                        <ConfidenceRing confidence={confidence} active={confidence > 0} />
                                     </motion.div>
                                 )}
                             </AnimatePresence>
@@ -1306,6 +1405,7 @@ export const Communicate: React.FC = () => {
                         audioUrl={audioUrl}
                         audioFilename={audioFilename}
                         generationStage={generationStage}
+                        onPlaybackChange={setIsAudioPlaying}
                         compact
                     />
                 </div>
@@ -1355,17 +1455,19 @@ export const Communicate: React.FC = () => {
                 >
                     {isGenerating ? (
                         <>
-                            <span
-                                style={{
-                                    width: 14,
-                                    height: 14,
-                                    borderRadius: '50%',
-                                    border: '2px solid rgba(255,120,110,0.3)',
-                                    borderTopColor: '#ff7a6a',
-                                    display: 'inline-block',
-                                    animation: 'sentisign-spin 0.8s linear infinite',
-                                }}
-                            />
+                            {generationStage === 'audio' ? <AudioBars color="#ff7a6a" /> : (
+                                <span
+                                    style={{
+                                        width: 14,
+                                        height: 14,
+                                        borderRadius: '50%',
+                                        border: '2px solid rgba(255,120,110,0.3)',
+                                        borderTopColor: '#ff7a6a',
+                                        display: 'inline-block',
+                                        animation: 'sentisign-spin 0.8s linear infinite',
+                                    }}
+                                />
+                            )}
                             Cancel
                             <span
                                 style={{
@@ -1384,7 +1486,8 @@ export const Communicate: React.FC = () => {
                         </>
                     ) : (
                         <>
-                            <Volume2 size={16} /> Generate &amp; Speak
+                            {showSpeakingBars ? <AudioBars color="#44d9a0" /> : <Volume2 size={16} />}
+                            Generate &amp; Speak
                         </>
                     )}
                 </motion.button>
