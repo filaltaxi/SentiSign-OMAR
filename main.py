@@ -1195,8 +1195,10 @@ def _background_startup_load_all():
         _startup_set_overall('loading', 'Preloading TTS model...')
         _startup_set_step('tts', 'loading')
         try:
-            from tts import load_model as load_tts_model
+            from tts import load_model as load_tts_model, warmup_model as warmup_tts_model
             load_tts_model()
+            _startup_set_overall('loading', 'Warming up TTS model...')
+            warmup_tts_model()
             _startup_set_step('tts', 'done')
         except Exception as e:
             _startup_set_step('tts', 'error', str(e))
@@ -1703,7 +1705,8 @@ async def generate_and_speak_async(req: GenerateRequest, background_tasks: Backg
         raise HTTPException(500, f'Sentence generation failed: {e}')
 
     try:
-        from tts import get_output_extension
+        from tts import get_output_extension, load_model as load_tts_model
+        load_tts_model()
     except Exception as e:
         raise HTTPException(500, f'TTS setup failed: {e}')
 

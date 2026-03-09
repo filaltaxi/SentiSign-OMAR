@@ -24,6 +24,7 @@ export const Communicate: React.FC = () => {
     const [sentence, setSentence] = useState<string>('');
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [audioFilename, setAudioFilename] = useState<string | null>(null);
+    const [generationError, setGenerationError] = useState<string | null>(null);
     const [generationStage, setGenerationStage] = useState<'idle' | 'sentence' | 'audio'>('idle');
     const [sessionActive, setSessionActive] = useState<boolean>(false);
     const [detectedEmotion, setDetectedEmotion] = useState<EmotionType>('neutral');
@@ -56,6 +57,7 @@ export const Communicate: React.FC = () => {
     const cancelGeneration = useCallback(() => {
         generationAbortRef.current?.abort();
         generationAbortRef.current = null;
+        setGenerationError(null);
         setGenerationStage('idle');
     }, []);
 
@@ -206,6 +208,7 @@ export const Communicate: React.FC = () => {
         generationRunIdRef.current += 1;
         const runId = generationRunIdRef.current;
 
+        setGenerationError(null);
         setGenerationStage('sentence');
         try {
             const data = await generateSentence(wordBuffer, selectedEmotion, {
@@ -230,6 +233,7 @@ export const Communicate: React.FC = () => {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             if (error instanceof Error && error.name === 'AbortError') return;
             console.error('Generation error:', error);
+            setGenerationError(error instanceof Error ? error.message : 'Generation failed');
         } finally {
             if (generationRunIdRef.current === runId) {
                 generationAbortRef.current = null;
@@ -373,6 +377,11 @@ export const Communicate: React.FC = () => {
                                 </span>
                             </div>
                         </div>
+                        {generationError && (
+                            <div className="mb-3 rounded-xl border border-[#ffd0cd] bg-[#fff4f3] px-3 py-2 text-[0.78rem] font-semibold text-[#b4342b]">
+                                {generationError}
+                            </div>
+                        )}
                         <SentenceOutput
                             sentence={sentence}
                             audioUrl={audioUrl}

@@ -33,6 +33,7 @@ from play_audio import play_audio, save_wav
 
 _model = None
 _loaded_engine = None
+_warmed_engine = None
 
 _DEFAULT_TTS_ENGINE = "cartesia"
 _DEFAULT_API_URL = "https://api.cartesia.ai/tts/bytes"
@@ -109,6 +110,23 @@ def get_engine_label() -> str:
 def load_model():
     """Validate the configured backend once and cache it for subsequent calls."""
     return _load_backend()
+
+
+def warmup_model() -> bool:
+    """Run a one-time inference warmup for local engines that benefit from it."""
+    global _warmed_engine
+
+    engine = get_engine_id()
+    if engine != "chatterbox":
+        return False
+
+    if _warmed_engine == engine:
+        return False
+
+    _speak_chatterbox("Warm up.", emotion="neutral", play=False)
+    _warmed_engine = engine
+    print("[tts] Warmup complete.\n")
+    return True
 
 
 def _load_backend():
